@@ -1,9 +1,0 @@
-com\trucare\member\exception\ResourceNotFoundException.class
-com\trucare\member\service\MemberService.class
-com\trucare\member\MemberServiceApplication.class
-com\trucare\member\model\Member.class
-com\trucare\member\repository\MemberRepository.class
-com\trucare\member\controller\MemberController.class
-com\trucare\member\service\MemberServiceImpl.class
-com\trucare\member\mapper\MemberMapperImpl.class
-com\trucare\member\mapper\MemberMapper.class

@@ -6,6 +6,7 @@ Thumbs.db
 
 ### Maven ###
 target/
+**/target/
 .mvn/wrapper/maven-wrapper.jar
 
 ### STS / Eclipse ###
@@ -42,3 +43,4 @@ build/
 ### OS ###
 *.swp
 *.swo
+
