@@ -1,0 +1,44 @@
+### General ###
+HELP.md
+*.log
+.DS_Store
+Thumbs.db
+
+### Maven ###
+target/
+.mvn/wrapper/maven-wrapper.jar
+
+### STS / Eclipse ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache/
+
+### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+
+### VS Code ###
+.vscode/
+
+### Environment and secrets ###
+.env
+.env.*
+!.env.example
+
+### OS ###
+*.swp
+*.swo

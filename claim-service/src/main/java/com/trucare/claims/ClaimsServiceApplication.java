@@ -7,7 +7,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 
 
 @SpringBootApplication
-//	@EnableDiscoveryClient
+@EnableDiscoveryClient
 @EnableFeignClients(basePackages = "com.trucare.shared.client")
 public class ClaimsServiceApplication {
 

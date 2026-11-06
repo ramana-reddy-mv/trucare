@@ -19,7 +19,7 @@ public class DocumentController {
     @Autowired
     private DocumentService documentService;
 
-    @PostMapping(value = "/upLoadDoc/", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "/upload-doc", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<String> upLoadDocument(
             @RequestPart("file") MultipartFile file,
             @RequestParam(value = "memberId", required = false) String memberId,
@@ -28,7 +28,7 @@ public class DocumentController {
         return ResponseEntity.ok(documentService.uploadDocument(file, memberId, documentType));
     }
 
-    @PostMapping(value = "/upLoadDocs/", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "/upLoadDocs", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<List<FileUploadStatus>> upLoadDocuments(
             @RequestPart("files") List<MultipartFile> files,
             @RequestParam(value = "memberId", required = false) String memberId,
