@@ -4,6 +4,8 @@ import com.trucare.member.service.MemberService;
 import com.trucare.shared.member.MemberDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -32,8 +34,16 @@ public class MemberController {
 //    }
 
     @GetMapping("/{memberId}")
-    public ResponseEntity<MemberDTO> getMemberByUsername(@PathVariable String memberId) {
+    public ResponseEntity<MemberDTO> getMemberByUsername(@PathVariable String memberId,
+                                                         Authentication authentication) {
         MemberDTO member = memberService.getMemberByMemberId(memberId);
+        boolean privileged = authentication.getAuthorities().stream().anyMatch(authority ->
+                authority.getAuthority().equals("ROLE_ADMIN")
+                        || authority.getAuthority().equals("ROLE_SERVICE"));
+        if (!privileged && (member.getUsername() == null
+                || !member.getUsername().equalsIgnoreCase(authentication.getName()))) {
+            throw new AccessDeniedException("Members can only access their own profile");
+        }
         return ResponseEntity.ok(member);
     }
 
@@ -60,4 +70,3 @@ public class MemberController {
         return ResponseEntity.noContent().build();
     }
 }
-

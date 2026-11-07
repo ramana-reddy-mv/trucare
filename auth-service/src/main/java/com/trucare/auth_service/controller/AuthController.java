@@ -1,33 +1,35 @@
 package com.trucare.auth_service.controller;
 
 
-import com.trucare.auth_service.entity.UserCredential;
+import com.trucare.auth_service.dto.AuthenticationRequest;
+import com.trucare.auth_service.dto.RegistrationRequest;
+import com.trucare.auth_service.dto.TokenResponse;
+import com.trucare.auth_service.dto.UserResponse;
 import com.trucare.auth_service.service.AuthService;
-import com.trucare.auth_service.service.JwtService;
-import org.springframework.beans.factory.annotation.Autowired;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/auth")
 public class AuthController {
 
-    @Autowired
-    private AuthService authService;
+    private final AuthService authService;
 
-    @PostMapping("/addUser")
-    public String addNewuser(@RequestBody UserCredential user){
-        return authService.addUser(user);
+    public AuthController(AuthService authService) {
+        this.authService = authService;
     }
 
-    @GetMapping("/token")
-    public String getToken(UserCredential userCredential){
-        return authService.generateToken(userCredential.getName());
+    @PostMapping({"/addUser", "/register"})
+    @ResponseStatus(HttpStatus.CREATED)
+    public UserResponse register(@Valid @RequestBody RegistrationRequest request) {
+        return authService.register(request);
     }
 
-    @GetMapping("/validateToken")
-    public String validateToken(@RequestParam("token") String token){
-        authService.validateToken(token);
-
-        return "token is valid";
+    @PostMapping({"/token", "/login"})
+    public TokenResponse authenticate(@Valid @RequestBody AuthenticationRequest request) {
+        return authService.authenticate(request);
     }
+
 }

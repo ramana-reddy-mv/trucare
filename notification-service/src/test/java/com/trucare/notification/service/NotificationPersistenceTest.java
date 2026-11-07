@@ -6,28 +6,40 @@ import com.trucare.notification.repository.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import jakarta.persistence.EntityManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Properties;
 import java.util.concurrent.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 @DataJpaTest(properties = {
-        "spring.datasource.url=jdbc:h2:mem:notifications;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.datasource.username=sa",
-        "spring.datasource.password=",
+        "spring.datasource.url=jdbc:postgresql://localhost:5432/trucare_notifications_persistence_test",
+        "spring.datasource.driver-class-name=org.postgresql.Driver",
+        "spring.datasource.username=postgres",
         "spring.jpa.hibernate.ddl-auto=create-drop"
 })
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(NotificationStore.class)
 class NotificationPersistenceTest {
+    @DynamicPropertySource
+    static void postgresPassword(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.password", NotificationPersistenceTest::localDatabasePassword);
+    }
+
     @Autowired private NotificationStore store;
     @Autowired private NotificationRepository notifications;
     @Autowired private NotificationAttemptRepository attempts;
@@ -209,5 +221,19 @@ class NotificationPersistenceTest {
         notification.setMaxAttempts(3);
         notification.setScheduledAt(Instant.now().minusSeconds(1));
         return notification;
+    }
+
+    private static String localDatabasePassword() {
+        Properties properties = new Properties();
+        try (var input = Files.newInputStream(Path.of("../local-secrets.properties"))) {
+            properties.load(input);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Cannot load local PostgreSQL test credentials", exception);
+        }
+        String password = properties.getProperty("spring.datasource.password");
+        if (password == null) {
+            throw new IllegalStateException("spring.datasource.password is missing from local-secrets.properties");
+        }
+        return password;
     }
 }

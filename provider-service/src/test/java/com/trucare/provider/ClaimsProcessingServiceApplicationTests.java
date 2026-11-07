@@ -3,7 +3,13 @@ package com.trucare.provider;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+		"spring.datasource.url=jdbc:postgresql://localhost:5432/trucare_providers_test",
+		"spring.datasource.username=postgres",
+		"spring.jpa.hibernate.ddl-auto=update",
+		"eureka.client.enabled=false",
+		"TRUCARE_JWT_SECRET_BASE64=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+})
 class ClaimsProcessingServiceApplicationTests {
 
 	@Test

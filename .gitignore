@@ -39,8 +39,8 @@ build/
 .env
 .env.*
 !.env.example
+local-secrets.properties
 
 ### OS ###
 *.swp
 *.swo
-

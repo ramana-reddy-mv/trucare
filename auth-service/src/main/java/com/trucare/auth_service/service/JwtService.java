@@ -5,43 +5,66 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.security.Key;
+import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
 
 @Service
 public class JwtService {
 
-    private static final String SECRET = "a13d5f7293c06ca106480248a3d21602d46aee37c17968001ef5fdf58277c861";
+    private final String secret;
+    private final String issuer;
 
+    public JwtService(@Value("${security.jwt.secret-base64}") String secret,
+                      @Value("${security.jwt.issuer:trucare-auth-service}") String issuer) {
+        this.secret = secret;
+        this.issuer = issuer;
+        getSignKey();
+    }
 
-
-
-    public String createToken(String username) {
-//        claims.put("role", "ROLE_ADMIN");
-//        claims.put("email", "ramana@example.com");
-//        UserDetails userDetails = myUserDetailsService.loadUserByUsername(username);
-//        List<String> roleNames = userDetails.getAuthorities().stream().map(GrantedAuthority::getAuthority).toList();
-        Map<String, Object> claims = new HashMap<>();
-//        claims.put("roles", roleNames);
+    public String createToken(String username, List<String> roles, long expirationSeconds) {
+        Instant issuedAt = Instant.now();
+        if (roles == null || roles.isEmpty()) {
+            throw new IllegalArgumentException("JWT roles must not be empty");
+        }
         return Jwts.builder()
-                .setClaims(claims)
                 .setSubject(username)
-                .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 15))
+                .setIssuer(issuer)
+                .claim("roles", roles)
+                .setIssuedAt(Date.from(issuedAt))
+                .setExpiration(Date.from(issuedAt.plusSeconds(expirationSeconds)))
                 .signWith(getSignKey(), SignatureAlgorithm.HS256).compact();
     }
 
     private Key getSignKey() {
-        byte[] keybytes = Decoders.BASE64.decode(SECRET);
-        return Keys.hmacShaKeyFor(keybytes);
+        byte[] keyBytes;
+        try {
+            keyBytes = Decoders.BASE64.decode(secret);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalStateException("security.jwt.secret-base64 must be valid Base64", exception);
+        }
+        if (keyBytes.length < 32) {
+            throw new IllegalStateException("JWT signing secret must decode to at least 32 bytes");
+        }
+        return Keys.hmacShaKeyFor(keyBytes);
     }
 
-    public void validateToken(String token){
-        Jwts.parserBuilder().setSigningKey(getSignKey()).build().parseClaimsJws(token);
+    public void validateToken(String token) {
+        Claims claims = Jwts.parserBuilder().setSigningKey(getSignKey()).requireIssuer(issuer)
+                .setAllowedClockSkewSeconds(30).build().parseClaimsJws(token).getBody();
+        Object roles = claims.get("roles");
+        if (claims.getSubject() == null || claims.getSubject().isBlank()
+                || !(roles instanceof Collection<?> values)
+                || values.isEmpty()
+                || values.stream().anyMatch(role -> !(role instanceof String))) {
+            throw new JwtException("JWT subject or role claims are missing");
+        }
     }
-
 }

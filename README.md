@@ -119,7 +119,7 @@ The Document Service contains a rule-based validation engine that flags suspicio
 | **Service Discovery** | Netflix Eureka |
 | **Messaging** | Apache Kafka |
 | **Security** | Spring Security, JWT, OAuth2 |
-| **Database** | MySQL |
+| **Database** | PostgreSQL |
 | **Storage** | AWS S3 |
 | **Communication** | REST APIs (sync), Kafka (async) |
 | **API Docs** | Swagger / OpenAPI |
@@ -133,11 +133,59 @@ The Document Service contains a rule-based validation engine that flags suspicio
 
 - Java 17+
 - Maven 3.8+
-- MySQL 8+
+- PostgreSQL 15+
 - Apache Kafka
 - Docker (optional)
 
-### Run Locally
+## Authentication and required configuration
+
+All services that validate JWTs must use the same `TRUCARE_JWT_SECRET_BASE64`.
+Generate a deployment-specific key with `openssl rand -base64 32` and provide it
+through the environment; do not commit it. The decoded value must contain at
+least 32 bytes. `TRUCARE_JWT_ISSUER` defaults to `trucare-auth-service`,
+`TRUCARE_JWT_EXPIRATION_SECONDS` defaults to 900 seconds, and
+`TRUCARE_SERVICE_TOKEN_TTL_SECONDS` defaults to 300 seconds.
+
+For local development, database URLs, usernames, and the Eureka URL are
+configured directly in each service's `src/main/resources` application
+properties/YAML files. The root-level `local-secrets.properties` file is
+gitignored and supplies the local `spring.datasource.password`; keep it local
+and never commit it. Create separate PostgreSQL databases for tests before
+running Maven: `trucare_auth_test`, `trucare_members_test`,
+`trucare_providers_test`, `trucare_documents_test`, `trucare_claims_test`,
+`trucare_care_test`, `trucare_policies_test`, `trucare_payments_test`,
+`trucare_settlements_test`,
+`trucare_notifications_security_test`, and
+`trucare_notifications_persistence_test`. Settlement currently has no
+database-backed test suite. Create these databases in PostgreSQL before
+running Maven tests. Settlement, Payment, and Notification also retain
+their existing HTTP Basic operator/internal account settings; configure the
+corresponding environment variables documented in those service sections
+below, using distinct strong credentials.
+
+```sql
+CREATE DATABASE trucare_auth_test;
+CREATE DATABASE trucare_members_test;
+CREATE DATABASE trucare_providers_test;
+CREATE DATABASE trucare_documents_test;
+CREATE DATABASE trucare_claims_test;
+CREATE DATABASE trucare_care_test;
+CREATE DATABASE trucare_policies_test;
+CREATE DATABASE trucare_payments_test;
+CREATE DATABASE trucare_settlements_test;
+CREATE DATABASE trucare_notifications_security_test;
+CREATE DATABASE trucare_notifications_persistence_test;
+```
+
+Registration is public and assigns only the `MEMBER` role. Elevated roles must
+be granted through a trusted administrative provisioning process, never through
+public registration. Login accepts a username or email plus password; send the
+returned JWT as `Authorization: Bearer <token>`. JWT validation is performed by
+the Gateway and each protected service. Claim, Policy, and Settlement Feign
+clients authenticate as service identities using short-lived JWTs. Payment's
+existing Settlement HTTP Basic integration is retained for compatibility.
+
+## Run Locally
 
 ```bash
 # 1. Clone the repository
@@ -180,8 +228,8 @@ cd ../api-gateway && mvn spring-boot:run
 ## 📡 Key API Endpoints
 
 ```
-POST   /api/auth/login              → Get JWT token
-POST   /api/auth/register           → Register user
+POST   /auth/token                  → Get JWT token (also POST /auth/login)
+POST   /auth/register               → Register user (also POST /auth/addUser)
 
 GET    /api/members/{id}            → Get member details
 POST   /api/members                 → Register member
@@ -212,15 +260,15 @@ returns HTTP 409. Generate one key per logical submission and reuse it for retri
 
 ### Policy Service
 
-The Policy Service uses its own MySQL database. Create it before starting the service:
+The Policy Service uses its own PostgreSQL database. Create it before starting the service:
 
 ```sql
 CREATE DATABASE trucare_policies;
 ```
 
-Configure credentials using `POLICY_DB_URL`, `POLICY_DB_USERNAME`, and
-`POLICY_DB_PASSWORD`. Defaults target `jdbc:mysql://localhost:3306/trucare_policies`
-with local `root` and an empty password. The service registers with Eureka on port 8087.
+The default connection is `jdbc:postgresql://localhost:5432/trucare_policies`
+with the local PostgreSQL username configured in `application.properties`. The
+service registers with Eureka on port 8087.
 
 Create a policy and its treatment coverage:
 
@@ -333,16 +381,15 @@ so a dependency outage is not mistaken for a business rejection.
 ## Settlement Service
 
 The Settlement Service listens on port 8088, registers with Eureka, and uses the
-independent MySQL database `trucare_settlements`. Create the database before
+independent PostgreSQL database `trucare_settlements`. Create the database before
 starting it:
 
 ```sql
 CREATE DATABASE trucare_settlements;
 ```
 
-Configure `SETTLEMENT_DB_URL`, `SETTLEMENT_DB_USERNAME`, and
-`SETTLEMENT_DB_PASSWORD` as appropriate. For service discovery, set `EUREKA_URL`
-if Eureka is not at `http://localhost:8761/eureka/`.
+The default database connection and Eureka URL are configured in
+`settlement-service/src/main/resources/application.properties`.
 
 The service requires four environment variables at startup:
 `SETTLEMENT_OPERATOR_USERNAME`, `SETTLEMENT_OPERATOR_PASSWORD`,
@@ -429,14 +476,14 @@ available through the unified Gateway Swagger UI.
 
 ## Payment Service
 
-Payment Service runs on port 8089 and uses its own MySQL database, `trucare_payments`:
+Payment Service runs on port 8089 and uses its own PostgreSQL database, `trucare_payments`:
 
 ```sql
 CREATE DATABASE trucare_payments;
 ```
 
-Configure `PAYMENT_DB_URL`, `PAYMENT_DB_USERNAME`, `PAYMENT_DB_PASSWORD`, and
-`EUREKA_URL` where needed. Startup requires environment variables
+The default database connection and Eureka URL are configured in
+`payment-service/src/main/resources/application.properties`. Startup requires environment variables
 `PAYMENT_OPERATOR_USERNAME`, `PAYMENT_OPERATOR_PASSWORD`,
 `PAYMENT_INTERNAL_USERNAME`, `PAYMENT_INTERNAL_PASSWORD`,
 `SETTLEMENT_PAYMENT_USERNAME`, and `SETTLEMENT_PAYMENT_PASSWORD`. The first pair
@@ -472,7 +519,7 @@ gateway is deterministic and defaults to `SUCCESS`; configure
 It does not perform transfers. The payment's single logical operation is
 uniquely tied to its settlement, while each retry creates a separately
 audited transaction attempt. Idempotency keys and canonical request hashes are
-stored in MySQL: same key and payload replays the original result, while a
+stored in PostgreSQL: same key and payload replays the original result, while a
 different payload returns HTTP 409.
 
 After marking the settlement `PAYMENT_PROCESSING`, Payment Service invokes the
@@ -517,9 +564,9 @@ notification failures do not affect claim, settlement, or payment processing.
 The service does not resolve or log recipient personal details; internal
 callers supply trusted recipient information.
 
-Configure `NOTIFICATION_DB_URL` (default
-`jdbc:postgresql://localhost:5432/trucare_notifications`), `NOTIFICATION_DB_USERNAME`,
-`NOTIFICATION_DB_PASSWORD`, `EUREKA_URL`, `NOTIFICATION_INTERNAL_USERNAME`,
+The default PostgreSQL connection and Eureka URL are configured in
+`notification-service/src/main/resources/application.properties`. Configure
+`NOTIFICATION_INTERNAL_USERNAME`,
 `NOTIFICATION_INTERNAL_PASSWORD`, `NOTIFICATION_ADMIN_USERNAME`, and
 `NOTIFICATION_ADMIN_PASSWORD`. Credentials are required at startup and must be
 unique strong values. V1 follows the environment-configured Basic-auth pattern

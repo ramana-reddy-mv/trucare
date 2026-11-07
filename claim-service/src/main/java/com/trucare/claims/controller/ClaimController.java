@@ -58,7 +58,7 @@ public class ClaimController {
         return new ResponseEntity<>(res,HttpStatus.NO_CONTENT);
     }
 
-    @PutMapping("/updateClaim/claimId")
+    @PutMapping("/updateClaim/{claimId}")
     public ResponseEntity<ClaimDTO> updateClaim(@PathVariable String claimId, @RequestBody UpdateClaimDTO updateClaimDTO) {
         ClaimDTO createdClaim = claimService.updateClaim(claimId, updateClaimDTO);
         return new ResponseEntity<>(createdClaim,HttpStatus.OK);

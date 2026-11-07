@@ -14,17 +14,35 @@ import com.trucare.settlement.repository.SettlementRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.math.BigDecimal;
+import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-@DataJpaTest(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
+@DataJpaTest(properties = {
+        "spring.datasource.url=jdbc:postgresql://localhost:5432/trucare_settlements_test",
+        "spring.datasource.driver-class-name=org.postgresql.Driver",
+        "spring.datasource.username=postgres",
+        "spring.jpa.hibernate.ddl-auto=create-drop"
+})
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({SettlementCreationTransaction.class, SettlementMapperImpl.class})
 class SettlementPersistenceTest {
+    @DynamicPropertySource
+    static void postgresPassword(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.password", SettlementPersistenceTest::localDatabasePassword);
+    }
+
 
     @Autowired
     private SettlementRepository settlementRepository;
@@ -98,5 +116,19 @@ class SettlementPersistenceTest {
         payment.setCurrency("INR");
         payment.setDetails("Payment completed");
         return payment;
+    }
+
+    private static String localDatabasePassword() {
+        Properties properties = new Properties();
+        try (var input = Files.newInputStream(Path.of("../local-secrets.properties"))) {
+            properties.load(input);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Cannot load local PostgreSQL test credentials", exception);
+        }
+        String password = properties.getProperty("spring.datasource.password");
+        if (password == null) {
+            throw new IllegalStateException("spring.datasource.password is missing from local-secrets.properties");
+        }
+        return password;
     }
 }
