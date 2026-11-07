@@ -7,6 +7,78 @@ spring:
   cloud:
     gateway:
       routes:
+        - id: member-openapi
+          uri: lb://member-service
+          predicates:
+            - Path=/openapi/members
+          filters:
+            - SetPath=/v3/api-docs
+
+        - id: provider-openapi
+          uri: lb://provider-service
+          predicates:
+            - Path=/openapi/providers
+          filters:
+            - SetPath=/v3/api-docs
+
+        - id: claims-openapi
+          uri: lb://claims-service
+          predicates:
+            - Path=/openapi/claims
+          filters:
+            - SetPath=/api-docs
+
+        - id: care-openapi
+          uri: lb://care-service
+          predicates:
+            - Path=/openapi/care
+          filters:
+            - SetPath=/v3/api-docs
+
+        - id: document-openapi
+          uri: lb://document-service
+          predicates:
+            - Path=/openapi/documents
+          filters:
+            - SetPath=/v3/api-docs
+
+        - id: auth-openapi
+          uri: lb://auth-service
+          predicates:
+            - Path=/openapi/auth
+          filters:
+            - SetPath=/v3/api-docs
+
+        - id: member-api
+          uri: lb://member-service
+          predicates:
+            - Path=/api/members/**
+
+        - id: provider-api
+          uri: lb://provider-service
+          predicates:
+            - Path=/api/providers/**
+
+        - id: claims-api
+          uri: lb://claims-service
+          predicates:
+            - Path=/api/claims/**
+
+        - id: care-api
+          uri: lb://claims-processing-service
+          predicates:
+            - Path=/api/cares/**
+
+        - id: document-api
+          uri: lb://document-service
+          predicates:
+            - Path=/api/documents/**
+
+        - id: auth-api
+          uri: lb://auth-service
+          predicates:
+            - Path=/auth/**
+
         - id: member-service
           uri: lb://member-service
           predicates:
@@ -53,3 +125,20 @@ eureka:
   client:
     service-url:
       defaultZone: http://localhost:8761/eureka/
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: Authentication Service
+        url: /openapi/auth
+      - name: Member Service
+        url: /openapi/members
+      - name: Provider Service
+        url: /openapi/providers
+      - name: Claims Service
+        url: /openapi/claims
+      - name: Care Service
+        url: /openapi/care
+      - name: Document Service
+        url: /openapi/documents

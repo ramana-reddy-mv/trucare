@@ -163,7 +163,7 @@ cd ../api-gateway && mvn spring-boot:run
 |---|---|
 | Eureka Dashboard | http://localhost:8761 |
 | API Gateway | http://localhost:8080 |
-| Swagger UI | http://localhost:8080/swagger-ui.html |
+| Unified Swagger UI | http://localhost:8080/swagger-ui.html |
 
 ---
 

@@ -25,7 +25,8 @@ public class AuthConfig {
         return http.csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests((authorizeHttpRequests) ->
                         authorizeHttpRequests
-                        .requestMatchers("/auth/addUser","/auth/token","/auth/validateToken").permitAll()
+                        .requestMatchers("/auth/addUser", "/auth/token", "/auth/validateToken",
+                                "/v3/api-docs", "/v3/api-docs/**").permitAll()
                 )
                 .build();
     }
