@@ -1,8 +1,6 @@
 package com.trucare.claims.service;
 
 
-import com.trucare.claims.client.MemberValidationClient;
-import com.trucare.claims.client.ProviderValidationClient;
 import com.trucare.claims.exception.ClaimNotFoundException;
 import com.trucare.claims.mapper.ClaimMapper;
 import com.trucare.claims.model.Claim;
@@ -11,7 +9,6 @@ import com.trucare.shared.claim.ClaimDTO;
 import com.trucare.shared.claim.CreateClaimDTO;
 import com.trucare.shared.claim.UpdateClaimDTO;
 import com.trucare.shared.document.DocumentDTO;
-import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import jakarta.transaction.Transactional;
 import jakarta.validation.ValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,35 +24,14 @@ public class ClaimServiceImpl implements ClaimService {
 
     private final ClaimRepository claimRepository;
     private final ClaimMapper claimMapper;
-    private final MemberValidationClient memberValidationClient;
-    private final ProviderValidationClient providerValidationClient;
+    private final ClaimValidationService claimValidationService;
 
     @Autowired
     public ClaimServiceImpl(ClaimRepository claimRepository, ClaimMapper claimMapper,
-                           MemberValidationClient memberValidationClient,
-                           ProviderValidationClient providerValidationClient) {
+                            ClaimValidationService claimValidationService) {
         this.claimRepository = claimRepository;
         this.claimMapper = claimMapper;
-        this.memberValidationClient = memberValidationClient;
-        this.providerValidationClient = providerValidationClient;
-    }
-
-    @CircuitBreaker(name = "memberValidation", fallbackMethod = "memberValidationFallback")
-    private boolean validateMember(String memberId) {
-        return Boolean.TRUE.equals(memberValidationClient.validateMember(memberId));
-    }
-
-    private boolean memberValidationFallback(String memberId, Throwable throwable) {
-        return false;
-    }
-
-    @CircuitBreaker(name = "providerValidation", fallbackMethod = "providerValidationFallback")
-    private boolean validateProvider(String providerId) {
-        return Boolean.TRUE.equals(providerValidationClient.validateProvider(providerId));
-    }
-
-    private boolean providerValidationFallback(String providerId, Throwable throwable) {
-        return false;
+        this.claimValidationService = claimValidationService;
     }
 
     // Create or update claim reactively
@@ -64,8 +40,8 @@ public class ClaimServiceImpl implements ClaimService {
     public ClaimDTO createClaim(CreateClaimDTO createClaimDTO) {
 
         // Validate Member and Provider using Feign Clients with circuit breakers
-        boolean isMemberValid = validateMember(createClaimDTO.getMemberId());
-        boolean isProviderValid = validateProvider(createClaimDTO.getProviderId());
+        boolean isMemberValid = claimValidationService.validateMember(createClaimDTO.getMemberId());
+        boolean isProviderValid = claimValidationService.validateProvider(createClaimDTO.getProviderId());
 
         if (!isMemberValid || !isProviderValid) {
             throw new ValidationException("Invalid member or provider");
