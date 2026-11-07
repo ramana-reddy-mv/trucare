@@ -17,12 +17,16 @@ import static org.mapstruct.NullValuePropertyMappingStrategy.IGNORE;
 @Mapper(componentModel = "spring")
 public interface ClaimMapper {
 
+    @Mapping(target = "claimStatuses", source = "claimStatus")
     ClaimDTO toClaimDTO(Claim claim);
 
+    @Mapping(target = "claimStatus", source = "claimStatuses")
     Claim toClaim(ClaimDTO claimDTO);
 
+    @Mapping(target = "claimStatus", source = "claimStatuses")
     Claim toClaim(CreateClaimDTO createClaimDTO);
 
+    @Mapping(target = "claimStatus", source = "claimStatuses")
     Claim toClaim(UpdateClaimDTO updateClaimDTO);
 
 }

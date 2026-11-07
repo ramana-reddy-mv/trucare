@@ -69,6 +69,7 @@ Insurance claims processing is riddled with inefficiencies and fraud. During a p
 | **provider-service** | 8083 | Hospital/provider legitimacy verification |
 | **claim-service** | 8084 | Core claim creation and lifecycle management |
 | **policy-service** | 8087 | Policy management, member enrollment, and treatment eligibility |
+| **settlement-service** | 8088 | Approved claim settlement calculation, audit, and lifecycle |
 | **document-service** | 8085 | Document upload (AWS S3) + fraud rule engine |
 | **care-service** | 8086 | Care plan and treatment validation |
 | **shared-library** | — | Common DTOs, constants, utilities |
@@ -155,6 +156,7 @@ cd ../claim-service && mvn spring-boot:run
 cd ../document-service && mvn spring-boot:run
 cd ../care-service && mvn spring-boot:run
 cd ../policy-service && mvn spring-boot:run
+cd ../settlement-service && mvn spring-boot:run
 
 # 5. Start API Gateway last
 cd ../api-gateway && mvn spring-boot:run
@@ -168,6 +170,7 @@ cd ../api-gateway && mvn spring-boot:run
 | API Gateway | http://localhost:8080 |
 | Unified Swagger UI | http://localhost:8080/swagger-ui.html |
 | Policy Service | http://localhost:8087/api/policies |
+| Settlement Service | http://localhost:8088/api/settlements |
 
 ---
 
@@ -187,6 +190,10 @@ POST   /api/policies/eligibility/check → Check policy eligibility (read-only)
 POST   /api/claims                  → Submit new claim (send a unique Idempotency-Key header)
 GET    /api/claims/{id}             → Get claim status
 PUT    /api/claims/{id}/status      → Update claim status
+
+POST   /api/settlements             → Create settlement for an approved claim
+GET    /api/settlements/{id}        → Retrieve settlement and audit details
+POST   /api/settlements/{id}/calculate → Calculate and persist settlement breakdown
 
 POST   /api/documents/upload        → Upload supporting document
 GET    /api/documents/{claimId}     → Get documents for a claim
@@ -316,6 +323,105 @@ so a dependency outage is not mistaken for a business rejection.
 
 ---
 
+## Settlement Service
+
+The Settlement Service listens on port 8088, registers with Eureka, and uses the
+independent MySQL database `trucare_settlements`. Create the database before
+starting it:
+
+```sql
+CREATE DATABASE trucare_settlements;
+```
+
+Configure `SETTLEMENT_DB_URL`, `SETTLEMENT_DB_USERNAME`, and
+`SETTLEMENT_DB_PASSWORD` as appropriate. For service discovery, set `EUREKA_URL`
+if Eureka is not at `http://localhost:8761/eureka/`.
+
+The service requires four environment variables at startup:
+`SETTLEMENT_OPERATOR_USERNAME`, `SETTLEMENT_OPERATOR_PASSWORD`,
+`SETTLEMENT_PAYMENT_USERNAME`, and `SETTLEMENT_PAYMENT_PASSWORD`. Use unique
+strong credentials and HTTPS in deployed environments. Settlement creation,
+calculation, cancellation, readiness, and explicit retry require the operator
+account. The payment-status callback requires the separate payment-service
+account; the environment-backed account provider is isolated behind
+`SettlementAccountProvider` so it can later be replaced with service-to-service
+authentication. No credentials are committed or provided as defaults.
+
+Create a settlement for a claim that Claim Service reports as `APPROVED`:
+
+```http
+POST /api/settlements
+Authorization: Basic <settlement-operator-credentials>
+Idempotency-Key: settle-CLM1001-2026-01
+Content-Type: application/json
+```
+
+```json
+{
+  "claimId": "CLM1001",
+  "policyId": 1001,
+  "settlementType": "REIMBURSEMENT",
+  "deductibleAmount": 5000,
+  "copayAmount": 10000,
+  "nonPayableAmount": 0
+}
+```
+
+Settlement Service calls Claim Service's business-ID endpoint
+`GET /api/claims/by-claim-id/{claimId}`. The approved amount, member ID, and
+provider ID are taken from that response; optional legacy values with those
+names in a request are ignored and never become settlement data. The claim
+amount must be non-negative and calculations round every input to two decimal
+places using `HALF_UP`. The final payable amount is approved amount minus
+deductible, co-payment, and non-payable amount.
+
+The idempotency key is stored under a database unique constraint. Repeating the
+same key and payload returns the original settlement; reusing it for a different
+payload returns HTTP 409. Concurrent duplicate requests are resolved by
+returning the winning settlement when the payload matches. A separate unique
+claim constraint also prevents more than one settlement per claim.
+
+`policyId` is currently stored as a temporary reference only. It is not
+independently verified because Claim Service does not expose a policy ID and
+this service does not yet integrate with a trusted Policy Service policy
+association.
+
+Calculate, make payment-ready, then report payment lifecycle events (no funds
+are transferred by this service):
+
+```http
+POST /api/settlements/1/calculate
+POST /api/settlements/1/ready-for-payment
+POST /api/settlements/1/payment-status
+Authorization: Basic <payment-service-credentials>
+Content-Type: application/json
+```
+
+```json
+{
+  "status": "PAYMENT_PROCESSING",
+  "paymentReference": "PAY10001",
+  "remarks": "Payment initiated"
+}
+```
+
+The payment service may then report `SETTLED` (with a payment reference) or
+`FAILED` (with remarks). Payment references and transaction details are stored
+in a separate payment-transaction table, and references are unique. A failed
+settlement can return to `READY_FOR_PAYMENT` only through the operator-only
+`POST /api/settlements/{id}/retry` endpoint. Cancellation is limited to
+`PENDING` and `CALCULATED`; all state changes and audit records commit in one
+local database transaction.
+
+Additional retrieval and search endpoints:
+`GET /api/settlements/number/{settlementNumber}`,
+`GET /api/settlements/claim/{claimId}`, and paginated
+`GET /api/settlements?status=CALCULATED&type=REIMBURSEMENT&memberId=M501&providerId=P201&from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z`.
+Page size is capped at 100. Settlement APIs and OpenAPI documentation are
+available through the unified Gateway Swagger UI.
+
+---
+
 ## 📂 Project Structure
 
 ```
@@ -329,6 +435,7 @@ trucare/
 ├── document-service/     # Document upload & fraud detection
 ├── care-service/         # Care plan validation
 ├── policy-service/       # Policy enrollment and eligibility
+├── settlement-service/   # Settlement calculation and lifecycle
 ├── shared-library/       # Common DTOs & utilities
 └── pom.xml               # Parent POM
 ```

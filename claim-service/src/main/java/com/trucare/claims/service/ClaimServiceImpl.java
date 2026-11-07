@@ -126,6 +126,13 @@ public class ClaimServiceImpl implements ClaimService {
     }
 
     @Override
+    public ClaimDTO getClaimByBusinessId(String claimId) {
+        Claim claim = claimRepository.findByClaimId(claimId)
+                .orElseThrow(() -> new ClaimNotFoundException("claim not found with id " + claimId));
+        return claimMapper.toClaimDTO(claim);
+    }
+
+    @Override
     public List<ClaimDTO> getAllClaims() {
         List<Claim> claims = claimRepository.findAll();
 

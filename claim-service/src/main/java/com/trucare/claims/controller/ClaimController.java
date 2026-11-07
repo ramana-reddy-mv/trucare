@@ -47,6 +47,11 @@ public class ClaimController {
         return new ResponseEntity<>(claimDTO,HttpStatus.FOUND);
     }
 
+    @GetMapping("/by-claim-id/{claimId}")
+    public ResponseEntity<ClaimDTO> getClaimByBusinessId(@PathVariable String claimId) {
+        return ResponseEntity.ok(claimService.getClaimByBusinessId(claimId));
+    }
+
     @GetMapping("/removeClaim/{claimId}")
     public ResponseEntity<String> removeClaim(@PathVariable Long claimId){
         String res = claimService.deleteClaim(claimId);

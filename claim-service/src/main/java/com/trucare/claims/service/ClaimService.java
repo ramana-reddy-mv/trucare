@@ -12,6 +12,7 @@ public interface ClaimService {
 
      ClaimCreationResult createClaim(CreateClaimDTO createClaimDTO, String idempotencyKey);
      ClaimDTO getClaimById(Long claimId);
+     ClaimDTO getClaimByBusinessId(String claimId);
      List<ClaimDTO> getAllClaims();
      ClaimDTO updateClaim(String claimId, UpdateClaimDTO updateClaimDTO);
      String deleteClaim(Long claimId);
