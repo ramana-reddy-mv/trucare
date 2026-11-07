@@ -63,6 +63,13 @@ spring:
           filters:
             - SetPath=/v3/api-docs
 
+        - id: notification-openapi
+          uri: lb://notification-service
+          predicates:
+            - Path=/openapi/notifications
+          filters:
+            - SetPath=/v3/api-docs
+
         - id: auth-openapi
           uri: lb://auth-service
           predicates:
@@ -109,6 +116,11 @@ spring:
           uri: lb://payment-service
           predicates:
             - Path=/api/payments/**
+
+        - id: notification-api
+          uri: lb://notification-service
+          predicates:
+            - Path=/api/notifications/**,/api/notification-templates/**
 
         - id: auth-api
           uri: lb://auth-service
@@ -184,3 +196,5 @@ springdoc:
         url: /openapi/settlements
       - name: Payment Service
         url: /openapi/payments
+      - name: Notification Service
+        url: /openapi/notifications

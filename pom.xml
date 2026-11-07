@@ -25,7 +25,7 @@
         <module>policy-service</module>
         <module>settlement-service</module>
         <module>payment-service</module>
-<!--        <module>notifications-service</module>-->
+        <module>notification-service</module>
         <!-- Add other microservices as needed -->
     </modules>
 

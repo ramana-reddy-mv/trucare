@@ -506,6 +506,113 @@ Retrieval/search endpoints include:
 Page size is capped at 100. Payment OpenAPI is available through the Gateway's
 unified Swagger UI.
 
+## Notification Service
+
+The Notification Service runs on port `8090` and uses the independent
+PostgreSQL `trucare_notifications` database (the PostgreSQL driver is inherited
+from the root Maven parent). It accepts internal notification requests,
+renders administrator-managed templates, and persists delivery before a
+scheduled worker contacts the configured provider. Delivery is asynchronous;
+notification failures do not affect claim, settlement, or payment processing.
+The service does not resolve or log recipient personal details; internal
+callers supply trusted recipient information.
+
+Configure `NOTIFICATION_DB_URL` (default
+`jdbc:postgresql://localhost:5432/trucare_notifications`), `NOTIFICATION_DB_USERNAME`,
+`NOTIFICATION_DB_PASSWORD`, `EUREKA_URL`, `NOTIFICATION_INTERNAL_USERNAME`,
+`NOTIFICATION_INTERNAL_PASSWORD`, `NOTIFICATION_ADMIN_USERNAME`, and
+`NOTIFICATION_ADMIN_PASSWORD`. Credentials are required at startup and must be
+unique strong values. V1 follows the environment-configured Basic-auth pattern
+behind a replaceable `NotificationSecurityPolicy`; production member access
+should bind the authenticated platform identity to the recipient ID.
+
+Create a template as an administrator before dispatching that event/channel:
+
+```http
+POST /api/notification-templates
+Authorization: Basic <notification-admin-credentials>
+Content-Type: application/json
+```
+
+```json
+{
+  "templateCode": "CLAIM-APPROVED-EMAIL",
+  "eventType": "CLAIM_APPROVED",
+  "channel": "EMAIL",
+  "subjectTemplate": "Your healthcare claim has been approved",
+  "messageTemplate": "Hello {{memberName}}, claim {{claimId}} has been approved for {{approvedAmount}}.",
+  "active": true
+}
+```
+
+Templates are safe literal substitutions; only `{{identifier}}` placeholders
+are recognized, missing variables are rejected, and expressions are never
+evaluated. One active template per event and channel is allowed. `PUT
+/api/notification-templates/{templateCode}` updates or deactivates it.
+
+Create notifications with an internal service credential and an idempotency
+key:
+
+```http
+POST /api/notifications
+Authorization: Basic <notification-internal-credentials>
+Idempotency-Key: CLAIM-CLM1001-APPROVED-EMAIL
+Content-Type: application/json
+```
+
+```json
+{
+  "eventType": "CLAIM_APPROVED",
+  "recipientId": "501",
+  "recipientType": "MEMBER",
+  "channel": "EMAIL",
+  "recipientAddress": "member@example.com",
+  "relatedEntityType": "CLAIM",
+  "relatedEntityId": "CLM1001",
+  "templateCode": "CLAIM-APPROVED-EMAIL",
+  "businessDeduplicationReference": "CLM1001-APPROVED-V1",
+  "variables": {
+    "memberName": "Ram",
+    "claimId": "CLM1001",
+    "approvedAmount": "120000"
+  }
+}
+```
+
+Same idempotency key and payload returns the original notification; reusing the
+key for another payload returns HTTP 409. The optional business-deduplication
+reference suppresses repeat notifications only for the same event, recipient,
+and channel. Claim approval/rejection/document requests and settlement/payment
+final outcomes are mandatory transactional events and bypass disabled channel
+preferences; all other events respect a disabled preference. Unconfigured
+preferences default to enabled. Use
+`PUT /api/notifications/recipient/{recipientId}/preferences?recipientType=MEMBER`
+to update a recipient preference.
+
+`NOTIFICATION_EMAIL_MODE=MOCK` is the default deterministic email provider.
+For SMTP set it to `SMTP` and provide `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`,
+`SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_AUTH`, and `SMTP_STARTTLS`. SMS is a mock
+provider in V1; in-app notifications are persisted and have separate read state.
+`NOTIFICATION_DELIVERY_ENABLED`, `NOTIFICATION_DELIVERY_FIXED_DELAY_MS`,
+`NOTIFICATION_DELIVERY_BATCH_SIZE`, `NOTIFICATION_DELIVERY_MAX_ATTEMPTS`,
+`NOTIFICATION_DELIVERY_INITIAL_DELAY_MS`, and
+`NOTIFICATION_STALE_PROCESSING_TIMEOUT_MS` configure the bounded worker. Provider
+calls occur outside database transactions. Retries reuse a stable
+provider-idempotency reference; SMTP itself does not guarantee exactly-once
+delivery after an ambiguous process crash.
+
+Query notifications using `GET /api/notifications/{id}`,
+`GET /api/notifications/reference/{reference}`,
+`GET /api/notifications/recipient/{recipientId}`, or paginated
+`GET /api/notifications?eventType=PAYMENT_SUCCESS&channel=IN_APP&status=SENT&relatedEntityId=PAY1001`.
+In-app lists are available at `/api/notifications/in-app/{recipientId}` and
+`/unread`; mark a notification read with `PATCH
+/api/notifications/{id}/read`. `POST /api/notifications/{id}/retry` retries a
+failed notification only while below the bounded attempt limit. Template APIs
+are administrator-only; recipient endpoints enforce owner matching unless the
+caller has an internal/admin role. The event handler is transport-independent
+so a future Kafka adapter can call it without changing delivery logic.
+
 ---
 
 ## 📂 Project Structure
@@ -523,6 +630,7 @@ trucare/
 ├── policy-service/       # Policy enrollment and eligibility
 ├── settlement-service/   # Settlement calculation and lifecycle
 ├── payment-service/      # Payment attempts and gateway orchestration
+├── notification-service/ # Templates and asynchronous notification delivery
 ├── shared-library/       # Common DTOs & utilities
 └── pom.xml               # Parent POM
 ```
