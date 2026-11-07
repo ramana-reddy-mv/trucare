@@ -42,6 +42,13 @@ spring:
           filters:
             - SetPath=/v3/api-docs
 
+        - id: policy-openapi
+          uri: lb://policy-service
+          predicates:
+            - Path=/openapi/policies
+          filters:
+            - SetPath=/v3/api-docs
+
         - id: auth-openapi
           uri: lb://auth-service
           predicates:
@@ -73,6 +80,11 @@ spring:
           uri: lb://document-service
           predicates:
             - Path=/api/documents/**
+
+        - id: policy-api
+          uri: lb://policy-service
+          predicates:
+            - Path=/api/policies/**
 
         - id: auth-api
           uri: lb://auth-service
@@ -142,3 +154,5 @@ springdoc:
         url: /openapi/care
       - name: Document Service
         url: /openapi/documents
+      - name: Policy Service
+        url: /openapi/policies

@@ -68,6 +68,7 @@ Insurance claims processing is riddled with inefficiencies and fraud. During a p
 | **member-service** | 8082 | Member eligibility and coverage validation |
 | **provider-service** | 8083 | Hospital/provider legitimacy verification |
 | **claim-service** | 8084 | Core claim creation and lifecycle management |
+| **policy-service** | 8087 | Policy management, member enrollment, and treatment eligibility |
 | **document-service** | 8085 | Document upload (AWS S3) + fraud rule engine |
 | **care-service** | 8086 | Care plan and treatment validation |
 | **shared-library** | — | Common DTOs, constants, utilities |
@@ -80,9 +81,10 @@ Insurance claims processing is riddled with inefficiencies and fraud. During a p
 1. Client submits claim → API Gateway
 2. API Gateway validates JWT → routes to Claim Service
 3. Claim Service checks Member Service (Is member eligible?)
-4. Claim Service checks Provider Service (Is hospital legitimate?)
-5. Claim accepted → Claim Service publishes "claim.created" event to Kafka
-6. Document Service consumes event → validates uploaded documents against billing
+4. Claim Service checks Policy Service (policy, enrollment, dates, treatment coverage, and balances)
+5. Claim Service checks Provider Service (Is hospital legitimate?)
+6. Claim accepted → Claim Service publishes "claim.created" event to Kafka
+7. Document Service consumes event → validates uploaded documents against billing
 7. Rule Engine checks:
    ├── Room type match (single vs shared)
    ├── Procedure billed vs documented
@@ -152,6 +154,7 @@ cd ../provider-service && mvn spring-boot:run
 cd ../claim-service && mvn spring-boot:run
 cd ../document-service && mvn spring-boot:run
 cd ../care-service && mvn spring-boot:run
+cd ../policy-service && mvn spring-boot:run
 
 # 5. Start API Gateway last
 cd ../api-gateway && mvn spring-boot:run
@@ -164,6 +167,7 @@ cd ../api-gateway && mvn spring-boot:run
 | Eureka Dashboard | http://localhost:8761 |
 | API Gateway | http://localhost:8080 |
 | Unified Swagger UI | http://localhost:8080/swagger-ui.html |
+| Policy Service | http://localhost:8087/api/policies |
 
 ---
 
@@ -177,6 +181,8 @@ GET    /api/members/{id}            → Get member details
 POST   /api/members                 → Register member
 
 GET    /api/providers/{id}          → Get provider details
+POST   /api/policies                → Create a policy
+POST   /api/policies/eligibility/check → Check policy eligibility (read-only)
 
 POST   /api/claims                  → Submit new claim (send a unique Idempotency-Key header)
 GET    /api/claims/{id}             → Get claim status
@@ -189,6 +195,124 @@ GET    /api/documents/{claimId}     → Get documents for a claim
 Claim creation requires an `Idempotency-Key` header. Repeating the same key with the
 same request returns the original claim; using that key with a different request
 returns HTTP 409. Generate one key per logical submission and reuse it for retries.
+
+### Policy Service
+
+The Policy Service uses its own MySQL database. Create it before starting the service:
+
+```sql
+CREATE DATABASE trucare_policies;
+```
+
+Configure credentials using `POLICY_DB_URL`, `POLICY_DB_USERNAME`, and
+`POLICY_DB_PASSWORD`. Defaults target `jdbc:mysql://localhost:3306/trucare_policies`
+with local `root` and an empty password. The service registers with Eureka on port 8087.
+
+Create a policy and its treatment coverage:
+
+```http
+POST /api/policies
+Content-Type: application/json
+```
+
+```json
+{
+  "policyNumber": "POL1001",
+  "policyName": "Family Health",
+  "policyType": "FAMILY_FLOATER",
+  "coverageAmount": 500000,
+  "startDate": "2026-01-01",
+  "endDate": "2026-12-31",
+  "status": "ACTIVE",
+  "coverages": [
+    {
+      "treatmentType": "HOSPITALIZATION",
+      "coverageLimit": 300000,
+      "waitingPeriodDays": 30,
+      "description": "In-patient hospital care"
+    }
+  ]
+}
+```
+
+Enrollment is a separate operation and validates the member through
+`GET /api/members/validate/{memberId}` in Member Service:
+
+```http
+POST /api/policies/1001/members
+Content-Type: application/json
+```
+
+```json
+{
+  "memberId": "M123456",
+  "relationship": "SELF",
+  "enrollmentDate": "2026-01-01"
+}
+```
+
+Check eligibility without reserving or deducting coverage:
+
+```http
+POST /api/policies/eligibility/check
+Content-Type: application/json
+```
+
+```json
+{
+  "memberId": "M123456",
+  "policyNumber": "POL1001",
+  "treatmentType": "HOSPITALIZATION",
+  "treatmentDate": "2026-11-07",
+  "requestedAmount": 150000
+}
+```
+
+Example eligible response:
+
+```json
+{
+  "eligible": true,
+  "policyId": 1001,
+  "policyNumber": "POL1001",
+  "memberId": "M123456",
+  "coverageAmount": 500000,
+  "availableCoverageAmount": 500000,
+  "treatmentType": "HOSPITALIZATION",
+  "maximumEligibleAmount": 300000,
+  "reason": "Policy is active and treatment is covered"
+}
+```
+
+Ineligible responses use `eligible: false` and provide a reason (for example,
+`"Member is not actively enrolled in this policy"`). Eligibility is not claim
+approval, and coverage balances are not changed by this read-only check.
+
+Additional endpoints: `GET /api/policies`, `GET /api/policies/{policyId}`,
+`PUT /api/policies/{policyId}`, `GET /api/policies/number/{policyNumber}`,
+`GET /api/policies/{policyId}/members`, `GET /api/policies/member/{memberId}`,
+`DELETE /api/policies/{policyId}/members/{memberId}` (deactivates enrollment), and
+`GET /api/policies/{policyId}/coverage`. Lists support `page` and `size` (maximum 100).
+The Policy API is included in the unified Swagger UI at
+`http://localhost:8080/swagger-ui.html`.
+
+Claim creation now requires the policy and treatment fields so Claim Service can
+check eligibility before persisting a claim:
+
+```json
+{
+  "memberId": "M123456",
+  "providerId": "PR123456",
+  "policyNumber": "POL1001",
+  "treatmentType": "HOSPITALIZATION",
+  "treatmentDate": "2026-11-07",
+  "claimAmount": 150000
+}
+```
+
+Send this body to `POST /api/claims` with a unique `Idempotency-Key` header.
+An ineligible policy returns HTTP 422; a Policy Service failure returns HTTP 503,
+so a dependency outage is not mistaken for a business rejection.
 
 ---
 
@@ -204,6 +328,7 @@ trucare/
 ├── claim-service/        # Core claims processing
 ├── document-service/     # Document upload & fraud detection
 ├── care-service/         # Care plan validation
+├── policy-service/       # Policy enrollment and eligibility
 ├── shared-library/       # Common DTOs & utilities
 └── pom.xml               # Parent POM
 ```

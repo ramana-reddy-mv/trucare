@@ -31,15 +31,18 @@ public class ClaimServiceImpl implements ClaimService {
     private final ClaimRepository claimRepository;
     private final ClaimMapper claimMapper;
     private final ClaimValidationService claimValidationService;
+    private final ClaimPolicyEligibilityService claimPolicyEligibilityService;
     private final ObjectMapper objectMapper;
 
     @Autowired
     public ClaimServiceImpl(ClaimRepository claimRepository, ClaimMapper claimMapper,
                             ClaimValidationService claimValidationService,
+                            ClaimPolicyEligibilityService claimPolicyEligibilityService,
                             ObjectMapper objectMapper) {
         this.claimRepository = claimRepository;
         this.claimMapper = claimMapper;
         this.claimValidationService = claimValidationService;
+        this.claimPolicyEligibilityService = claimPolicyEligibilityService;
         this.objectMapper = objectMapper;
     }
 
@@ -56,6 +59,14 @@ public class ClaimServiceImpl implements ClaimService {
         Optional<Claim> existingClaim = claimRepository.findByIdempotencyKey(normalizedKey);
         if (existingClaim.isPresent()) {
             return replayOrReject(existingClaim.get(), requestHash);
+        }
+
+        var eligibility = claimPolicyEligibilityService.checkEligibility(createClaimDTO);
+        if (!eligibility.eligible()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    eligibility.reason() == null || eligibility.reason().isBlank()
+                            ? "Policy is not eligible for this treatment"
+                            : eligibility.reason());
         }
 
         // Validate Member and Provider using Feign Clients with circuit breakers

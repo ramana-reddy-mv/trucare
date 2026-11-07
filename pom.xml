@@ -16,11 +16,13 @@
     <packaging>pom</packaging>
 
     <modules>
+        <module>shared-library</module>
         <module>claim-service</module>
         <module>member-service</module>
         <module>document-service</module>
         <module>care-service</module>
         <module>provider-service</module>
+        <module>policy-service</module>
 <!--        <module>notifications-service</module>-->
         <!-- Add other microservices as needed -->
     </modules>

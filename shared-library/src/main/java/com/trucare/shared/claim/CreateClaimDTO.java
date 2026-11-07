@@ -1,11 +1,15 @@
 package com.trucare.shared.claim;
 
 import com.trucare.shared.document.DocumentDTO;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -15,8 +19,18 @@ import java.util.List;
 public class CreateClaimDTO {
 
     private String claimId;
-    private String memberId; // Can be expanded to MemberDTO if needed
-    private String providerId; // Can be expanded to ProviderDTO if needed
+    @NotBlank
+    private String memberId;
+    @NotBlank
+    private String providerId;
+    @NotBlank
+    private String policyNumber;
+    @NotBlank
+    private String treatmentType;
+    @NotNull
+    private LocalDate treatmentDate;
+    @NotNull
+    @DecimalMin(value = "0.0", inclusive = false)
     private BigDecimal claimAmount;
     private String claimStatuses; // Relationship to ClaimStatusDTO
     private LocalDateTime createdAt;  // Claim creation date

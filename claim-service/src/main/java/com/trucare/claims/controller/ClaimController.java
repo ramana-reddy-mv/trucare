@@ -16,6 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 import com.trucare.claims.service.ClaimService;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/claims")
@@ -34,7 +35,7 @@ public class ClaimController {
     @PostMapping
     public ResponseEntity<ClaimDTO> createClaim(
             @RequestHeader("Idempotency-Key") String idempotencyKey,
-            @RequestBody CreateClaimDTO createClaimDTO) {
+            @Valid @RequestBody CreateClaimDTO createClaimDTO) {
         ClaimCreationResult result = claimService.createClaim(createClaimDTO, idempotencyKey);
         HttpStatus status = result.replayed() ? HttpStatus.OK : HttpStatus.CREATED;
         return new ResponseEntity<>(result.claim(), status);

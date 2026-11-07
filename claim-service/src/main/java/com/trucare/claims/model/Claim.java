@@ -33,6 +33,12 @@ public class Claim {
 
     private String providerId;  // ID of the provider
 
+    private String policyNumber;
+
+    private String treatmentType;
+
+    private java.time.LocalDate treatmentDate;
+
     private BigDecimal claimAmount;  // Claim amount
 
     private String claimStatus;  // CLAIMED, APPROVED, REJECTED

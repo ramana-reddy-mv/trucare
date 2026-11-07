@@ -1,6 +1,7 @@
 package com.trucare.claims.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.trucare.claims.client.PolicyEligibilityResponse;
 import com.trucare.claims.mapper.ClaimMapper;
 import com.trucare.claims.model.Claim;
 import com.trucare.claims.repository.ClaimRepository;
@@ -25,6 +26,7 @@ class ClaimServiceImplTest {
     private ClaimRepository claimRepository;
     private ClaimMapper claimMapper;
     private ClaimValidationService claimValidationService;
+    private ClaimPolicyEligibilityService claimPolicyEligibilityService;
     private ClaimServiceImpl claimService;
 
     @BeforeEach
@@ -32,8 +34,10 @@ class ClaimServiceImplTest {
         claimRepository = mock(ClaimRepository.class);
         claimMapper = mock(ClaimMapper.class);
         claimValidationService = mock(ClaimValidationService.class);
+        claimPolicyEligibilityService = mock(ClaimPolicyEligibilityService.class);
         claimService = new ClaimServiceImpl(
-                claimRepository, claimMapper, claimValidationService, new ObjectMapper());
+                claimRepository, claimMapper, claimValidationService,
+                claimPolicyEligibilityService, new ObjectMapper());
     }
 
     @Test
@@ -44,6 +48,7 @@ class ClaimServiceImplTest {
 
         when(claimRepository.findByIdempotencyKey("request-123"))
                 .thenReturn(Optional.empty(), Optional.of(persistedClaim));
+        when(claimPolicyEligibilityService.checkEligibility(request)).thenReturn(eligibleResponse());
         when(claimValidationService.validateMember("member-1")).thenReturn(true);
         when(claimValidationService.validateProvider("provider-1")).thenReturn(true);
         when(claimMapper.toClaim(request)).thenReturn(new Claim());
@@ -71,6 +76,7 @@ class ClaimServiceImplTest {
         Claim persistedClaim = new Claim();
         when(claimRepository.findByIdempotencyKey("request-123"))
                 .thenReturn(Optional.empty(), Optional.of(persistedClaim));
+        when(claimPolicyEligibilityService.checkEligibility(originalRequest)).thenReturn(eligibleResponse());
         when(claimValidationService.validateMember("member-1")).thenReturn(true);
         when(claimValidationService.validateProvider("provider-1")).thenReturn(true);
         when(claimMapper.toClaim(originalRequest)).thenReturn(new Claim());
@@ -100,5 +106,12 @@ class ClaimServiceImplTest {
         request.setProviderId("provider-1");
         request.setClaimAmount(new BigDecimal("100.00"));
         return request;
+    }
+
+    private PolicyEligibilityResponse eligibleResponse() {
+        return new PolicyEligibilityResponse(
+                true, 1L, "POL1001", "member-1",
+                new BigDecimal("500000.00"), new BigDecimal("500000.00"),
+                "HOSPITALIZATION", new BigDecimal("300000.00"), "eligible");
     }
 }
