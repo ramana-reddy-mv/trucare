@@ -70,6 +70,7 @@ Insurance claims processing is riddled with inefficiencies and fraud. During a p
 | **claim-service** | 8084 | Core claim creation and lifecycle management |
 | **policy-service** | 8087 | Policy management, member enrollment, and treatment eligibility |
 | **settlement-service** | 8088 | Approved claim settlement calculation, audit, and lifecycle |
+| **payment-service** | 8089 | Payment attempts, mock gateway, and settlement callback delivery |
 | **document-service** | 8085 | Document upload (AWS S3) + fraud rule engine |
 | **care-service** | 8086 | Care plan and treatment validation |
 | **shared-library** | — | Common DTOs, constants, utilities |
@@ -157,6 +158,7 @@ cd ../document-service && mvn spring-boot:run
 cd ../care-service && mvn spring-boot:run
 cd ../policy-service && mvn spring-boot:run
 cd ../settlement-service && mvn spring-boot:run
+cd ../payment-service && mvn spring-boot:run
 
 # 5. Start API Gateway last
 cd ../api-gateway && mvn spring-boot:run
@@ -171,6 +173,7 @@ cd ../api-gateway && mvn spring-boot:run
 | Unified Swagger UI | http://localhost:8080/swagger-ui.html |
 | Policy Service | http://localhost:8087/api/policies |
 | Settlement Service | http://localhost:8088/api/settlements |
+| Payment Service | http://localhost:8089/api/payments |
 
 ---
 
@@ -194,6 +197,10 @@ PUT    /api/claims/{id}/status      → Update claim status
 POST   /api/settlements             → Create settlement for an approved claim
 GET    /api/settlements/{id}        → Retrieve settlement and audit details
 POST   /api/settlements/{id}/calculate → Calculate and persist settlement breakdown
+
+POST   /api/payments                → Initiate a payment for a ready settlement
+GET    /api/payments/{id}           → Retrieve payment, attempts, and audit history
+POST   /api/payments/{id}/retry     → Retry a definitively failed payment
 
 POST   /api/documents/upload        → Upload supporting document
 GET    /api/documents/{claimId}     → Get documents for a claim
@@ -420,6 +427,85 @@ Additional retrieval and search endpoints:
 Page size is capped at 100. Settlement APIs and OpenAPI documentation are
 available through the unified Gateway Swagger UI.
 
+## Payment Service
+
+Payment Service runs on port 8089 and uses its own MySQL database, `trucare_payments`:
+
+```sql
+CREATE DATABASE trucare_payments;
+```
+
+Configure `PAYMENT_DB_URL`, `PAYMENT_DB_USERNAME`, `PAYMENT_DB_PASSWORD`, and
+`EUREKA_URL` where needed. Startup requires environment variables
+`PAYMENT_OPERATOR_USERNAME`, `PAYMENT_OPERATOR_PASSWORD`,
+`PAYMENT_INTERNAL_USERNAME`, `PAYMENT_INTERNAL_PASSWORD`,
+`SETTLEMENT_PAYMENT_USERNAME`, and `SETTLEMENT_PAYMENT_PASSWORD`. The first pair
+authorizes payment initiation, retry, and queries. The internal pair authorizes
+reconciliation and dead-letter callback redrive. Settlement credentials must be
+the payment-service account configured for Settlement Service. All use HTTP
+Basic for this development version; the authorization policy is a replaceable
+component. Use unique strong credentials and HTTPS in deployed environments.
+No credentials are included in source or default configuration.
+
+Payment creation accepts only a settlement ID and payment method; amount,
+currency, claim, recipient, and settlement status are fetched from Settlement
+Service and never trusted from the caller:
+
+```http
+POST /api/payments
+Authorization: Basic <payment-operator-credentials>
+Idempotency-Key: PAYMENT-REQ-12345
+Content-Type: application/json
+```
+
+```json
+{
+  "settlementId": 1001,
+  "paymentMethod": "BANK_TRANSFER"
+}
+```
+
+The settlement must be `READY_FOR_PAYMENT`, have a positive payable amount,
+supported INR currency, and consistent recipient/settlement types. The mock
+gateway is deterministic and defaults to `SUCCESS`; configure
+`PAYMENT_GATEWAY_MOCK_RESULT` as `SUCCESS`, `FAILED`, `TIMEOUT`, or `PROCESSING`.
+It does not perform transfers. The payment's single logical operation is
+uniquely tied to its settlement, while each retry creates a separately
+audited transaction attempt. Idempotency keys and canonical request hashes are
+stored in MySQL: same key and payload replays the original result, while a
+different payload returns HTTP 409.
+
+After marking the settlement `PAYMENT_PROCESSING`, Payment Service invokes the
+mock gateway. Success or definitive failure is persisted before the callback to
+Settlement Service. Callback deliveries are separately persisted and retried
+with bounded exponential backoff; enable or tune them with
+`PAYMENT_CALLBACK_RETRY_ENABLED`, `PAYMENT_CALLBACK_RETRY_MAX_ATTEMPTS`,
+`PAYMENT_CALLBACK_RETRY_INITIAL_DELAY_MS`, and
+`PAYMENT_CALLBACK_RETRY_FIXED_DELAY_MS`, and
+`PAYMENT_CALLBACK_RETRY_STALE_TIMEOUT_MS`. Stale in-flight callback claims are
+recovered after the configured timeout without duplicating gateway execution.
+If a callback fails, the recorded payment result is retained and callback retry
+does not execute another payment.
+Dead callback deliveries can be redriven through
+`POST /api/payments/{id}/callbacks/retry` using internal credentials.
+
+A gateway `TIMEOUT` is recorded as an unknown outcome (`PROCESSING`), not a
+failure. `POST /api/payments/{id}/reconcile` queries the provider reference; a
+payment cannot be retried until the provider returns a definitive failure.
+Payment retry is only allowed after Settlement Service has separately been
+returned to `READY_FOR_PAYMENT` by its operator retry workflow. Reconciliation
+can be enabled on a schedule with `PAYMENT_RECONCILIATION_ENABLED=true`; it is
+disabled by default. Refund status/history are modeled, but refunds are not
+implemented in V1; a future refund flow must verify provider settlement and
+record a separate transaction before moving a successful payment to `REFUNDED`.
+
+Retrieval/search endpoints include:
+`GET /api/payments/reference/{paymentReference}`,
+`GET /api/payments/settlement/{settlementId}`, and paginated
+`GET /api/payments?status=SUCCESS&settlementId=1001&claimId=CLM1001&memberId=M501&recipientType=PROVIDER&from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z`.
+Page size is capped at 100. Payment OpenAPI is available through the Gateway's
+unified Swagger UI.
+
 ---
 
 ## 📂 Project Structure
@@ -436,6 +522,7 @@ trucare/
 ├── care-service/         # Care plan validation
 ├── policy-service/       # Policy enrollment and eligibility
 ├── settlement-service/   # Settlement calculation and lifecycle
+├── payment-service/      # Payment attempts and gateway orchestration
 ├── shared-library/       # Common DTOs & utilities
 └── pom.xml               # Parent POM
 ```

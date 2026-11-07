@@ -56,6 +56,13 @@ spring:
           filters:
             - SetPath=/v3/api-docs
 
+        - id: payment-openapi
+          uri: lb://payment-service
+          predicates:
+            - Path=/openapi/payments
+          filters:
+            - SetPath=/v3/api-docs
+
         - id: auth-openapi
           uri: lb://auth-service
           predicates:
@@ -97,6 +104,11 @@ spring:
           uri: lb://settlement-service
           predicates:
             - Path=/api/settlements/**
+
+        - id: payment-api
+          uri: lb://payment-service
+          predicates:
+            - Path=/api/payments/**
 
         - id: auth-api
           uri: lb://auth-service
@@ -170,3 +182,5 @@ springdoc:
         url: /openapi/policies
       - name: Settlement Service
         url: /openapi/settlements
+      - name: Payment Service
+        url: /openapi/payments
