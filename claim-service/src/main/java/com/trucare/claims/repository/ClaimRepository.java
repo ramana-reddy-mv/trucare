@@ -11,4 +11,6 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     // Additional query methods can be added as needed
 
     Optional<Claim> findByClaimId(String claimId);
+
+    Optional<Claim> findByIdempotencyKey(String idempotencyKey);
 }

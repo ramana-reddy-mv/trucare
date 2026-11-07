@@ -23,6 +23,12 @@ public class Claim {
     @Column(unique = true)
     private String claimId;  // Unique claim number
 
+    @Column(name = "idempotency_key", unique = true, length = 128)
+    private String idempotencyKey;
+
+    @Column(name = "request_hash", length = 64)
+    private String requestHash;
+
     private String memberId;  // ID of the member
 
     private String providerId;  // ID of the provider

@@ -178,13 +178,17 @@ POST   /api/members                 → Register member
 
 GET    /api/providers/{id}          → Get provider details
 
-POST   /api/claims                  → Submit new claim
+POST   /api/claims                  → Submit new claim (send a unique Idempotency-Key header)
 GET    /api/claims/{id}             → Get claim status
 PUT    /api/claims/{id}/status      → Update claim status
 
 POST   /api/documents/upload        → Upload supporting document
 GET    /api/documents/{claimId}     → Get documents for a claim
 ```
+
+Claim creation requires an `Idempotency-Key` header. Repeating the same key with the
+same request returns the original claim; using that key with a different request
+returns HTTP 409. Generate one key per logical submission and reuse it for retries.
 
 ---
 

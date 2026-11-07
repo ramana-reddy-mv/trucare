@@ -10,7 +10,7 @@ import java.util.List;
 
 public interface ClaimService {
 
-     ClaimDTO createClaim(CreateClaimDTO createClaimDTO);
+     ClaimCreationResult createClaim(CreateClaimDTO createClaimDTO, String idempotencyKey);
      ClaimDTO getClaimById(Long claimId);
      List<ClaimDTO> getAllClaims();
      ClaimDTO updateClaim(String claimId, UpdateClaimDTO updateClaimDTO);

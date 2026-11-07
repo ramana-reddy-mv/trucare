@@ -5,6 +5,7 @@ import com.trucare.claims.model.Claim;
 import com.trucare.shared.claim.ClaimDTO;
 import com.trucare.shared.claim.CreateClaimDTO;
 import com.trucare.shared.claim.UpdateClaimDTO;
+import com.trucare.claims.service.ClaimCreationResult;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,9 +32,12 @@ public class ClaimController {
 
     // Endpoint to create or update claim
     @PostMapping
-    public ResponseEntity<ClaimDTO> createClaim(@RequestBody CreateClaimDTO createClaimDTO) {
-        ClaimDTO createdClaim = claimService.createClaim(createClaimDTO);
-        return new ResponseEntity<>(createdClaim,HttpStatus.CREATED);
+    public ResponseEntity<ClaimDTO> createClaim(
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @RequestBody CreateClaimDTO createClaimDTO) {
+        ClaimCreationResult result = claimService.createClaim(createClaimDTO, idempotencyKey);
+        HttpStatus status = result.replayed() ? HttpStatus.OK : HttpStatus.CREATED;
+        return new ResponseEntity<>(result.claim(), status);
     }
 
     @GetMapping("/getClaim/{claimId}")
@@ -54,4 +58,3 @@ public class ClaimController {
         return new ResponseEntity<>(createdClaim,HttpStatus.OK);
     }
 }
-

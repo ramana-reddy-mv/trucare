@@ -9,11 +9,17 @@ import com.trucare.shared.claim.ClaimDTO;
 import com.trucare.shared.claim.CreateClaimDTO;
 import com.trucare.shared.claim.UpdateClaimDTO;
 import com.trucare.shared.document.DocumentDTO;
-import jakarta.transaction.Transactional;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.ValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,19 +31,32 @@ public class ClaimServiceImpl implements ClaimService {
     private final ClaimRepository claimRepository;
     private final ClaimMapper claimMapper;
     private final ClaimValidationService claimValidationService;
+    private final ObjectMapper objectMapper;
 
     @Autowired
     public ClaimServiceImpl(ClaimRepository claimRepository, ClaimMapper claimMapper,
-                            ClaimValidationService claimValidationService) {
+                            ClaimValidationService claimValidationService,
+                            ObjectMapper objectMapper) {
         this.claimRepository = claimRepository;
         this.claimMapper = claimMapper;
         this.claimValidationService = claimValidationService;
+        this.objectMapper = objectMapper;
     }
 
     // Create or update claim reactively
     @Override
-    @Transactional
-    public ClaimDTO createClaim(CreateClaimDTO createClaimDTO) {
+    public ClaimCreationResult createClaim(CreateClaimDTO createClaimDTO, String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > 128) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Idempotency-Key must be non-blank and at most 128 characters");
+        }
+
+        String normalizedKey = idempotencyKey.trim();
+        String requestHash = hashRequest(createClaimDTO);
+        Optional<Claim> existingClaim = claimRepository.findByIdempotencyKey(normalizedKey);
+        if (existingClaim.isPresent()) {
+            return replayOrReject(existingClaim.get(), requestHash);
+        }
 
         // Validate Member and Provider using Feign Clients with circuit breakers
         boolean isMemberValid = claimValidationService.validateMember(createClaimDTO.getMemberId());
@@ -53,10 +72,39 @@ public class ClaimServiceImpl implements ClaimService {
         Claim claim = claimMapper.toClaim(createClaimDTO);
         claim.setClaimId(claimId);
         claim.setClaimStatus("PENDING_DOCUMENTS");
-        Claim savedClaim = claimRepository.save(claim);
+        claim.setIdempotencyKey(normalizedKey);
+        claim.setRequestHash(requestHash);
 
-        // Return Claim DTO
-        return claimMapper.toClaimDTO(savedClaim);
+        try {
+            Claim savedClaim = claimRepository.saveAndFlush(claim);
+            return new ClaimCreationResult(claimMapper.toClaimDTO(savedClaim), false);
+        } catch (DataIntegrityViolationException exception) {
+            Optional<Claim> concurrentClaim = claimRepository.findByIdempotencyKey(normalizedKey);
+            if (concurrentClaim.isPresent()) {
+                return replayOrReject(concurrentClaim.get(), requestHash);
+            }
+            throw exception;
+        }
+    }
+
+    private ClaimCreationResult replayOrReject(Claim existingClaim, String requestHash) {
+        if (!requestHash.equals(existingClaim.getRequestHash())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Idempotency-Key was already used with a different claim request");
+        }
+        return new ClaimCreationResult(claimMapper.toClaimDTO(existingClaim), true);
+    }
+
+    private String hashRequest(CreateClaimDTO createClaimDTO) {
+        try {
+            byte[] requestJson = objectMapper.writeValueAsBytes(createClaimDTO);
+            byte[] hash = MessageDigest.getInstance("SHA-256").digest(requestJson);
+            return java.util.HexFormat.of().formatHex(hash);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("Could not fingerprint claim request", exception);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
     }
 
     @Override
