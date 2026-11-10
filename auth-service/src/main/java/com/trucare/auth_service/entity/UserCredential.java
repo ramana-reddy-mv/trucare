@@ -37,7 +37,7 @@ public class UserCredential {
     private String password;
 
     @Column(nullable = false, length = 128)
-    private String roles = "MEMBER";
+    private String roles = "PENDING_MEMBER";
 
     public int getId() {
         return id;

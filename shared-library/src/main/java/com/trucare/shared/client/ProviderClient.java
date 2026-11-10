@@ -4,9 +4,9 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 
-@FeignClient(name = "provider-service", url="http://localhost:8081/api/providers")
+@FeignClient(name = "provider-service", contextId = "sharedProviderClient")
 public interface ProviderClient {
 
-    @GetMapping("/validate/{providerId}")
+    @GetMapping("/api/providers/validate/{providerId}")
     Boolean validateProvider(@PathVariable("providerId") String providerId);
 }

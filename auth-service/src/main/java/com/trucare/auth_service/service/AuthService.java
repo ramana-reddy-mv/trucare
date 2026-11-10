@@ -56,7 +56,7 @@ public class AuthService {
         user.setName(username);
         user.setEmail(email);
         user.setPassword(passwordEncoder.encode(request.password()));
-        user.setRoles("MEMBER");
+        user.setRoles("PENDING_MEMBER");
         try {
             UserCredential saved = userCredentialRepository.saveAndFlush(user);
             return response(saved);

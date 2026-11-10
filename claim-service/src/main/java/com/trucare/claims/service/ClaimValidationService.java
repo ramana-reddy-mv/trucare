@@ -1,7 +1,7 @@
 package com.trucare.claims.service;
 
-import com.trucare.claims.client.MemberValidationClient;
-import com.trucare.claims.client.ProviderValidationClient;
+import com.trucare.shared.client.MemberClient;
+import com.trucare.shared.client.ProviderClient;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
@@ -13,11 +13,11 @@ public class ClaimValidationService {
 
     private static final Logger logger = LoggerFactory.getLogger(ClaimValidationService.class);
 
-    private final MemberValidationClient memberValidationClient;
-    private final ProviderValidationClient providerValidationClient;
+    private final MemberClient memberValidationClient;
+    private final ProviderClient providerValidationClient;
 
-    public ClaimValidationService(MemberValidationClient memberValidationClient,
-                                  ProviderValidationClient providerValidationClient) {
+    public ClaimValidationService(MemberClient memberValidationClient,
+                                  ProviderClient providerValidationClient) {
         this.memberValidationClient = memberValidationClient;
         this.providerValidationClient = providerValidationClient;
     }

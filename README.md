@@ -139,16 +139,32 @@ The Document Service contains a rule-based validation engine that flags suspicio
 
 ## Authentication and required configuration
 
-All services that validate JWTs must use the same `TRUCARE_JWT_SECRET_BASE64`.
-Generate a deployment-specific key with `openssl rand -base64 32` and provide it
-through the environment; do not commit it. The decoded value must contain at
-least 32 bytes. `TRUCARE_JWT_ISSUER` defaults to `trucare-auth-service`,
-`TRUCARE_JWT_EXPIRATION_SECONDS` defaults to 900 seconds, and
-`TRUCARE_SERVICE_TOKEN_TTL_SECONDS` defaults to 300 seconds.
+Auth Service signs user JWTs with an RSA private key; services and the Gateway
+receive only the matching RSA public key for verification. Provide the private
+key as PKCS#8 DER encoded in Base64 through `TRUCARE_JWT_PRIVATE_KEY_BASE64`
+to Auth Service only. Provide the matching X.509 DER public key as
+`TRUCARE_JWT_PUBLIC_KEY_BASE64` to Auth Service, the Gateway, and each
+JWT-protected service. Use RSA keys of at least 2048 bits and do not commit the
+private key. JWTs use RS256, the configured issuer, a `trucare-api` audience,
+and an expiration of 900 seconds by default; `TRUCARE_JWT_ISSUER` and
+`TRUCARE_JWT_EXPIRATION_SECONDS` can be configured.
 
-For local development, database URLs, usernames, and the Eureka URL are
-configured directly in each service's `src/main/resources` application
-properties/YAML files. The root-level `local-secrets.properties` file is
+Claim, Policy, and Settlement Feign clients resolve Member, Provider, Policy,
+and Claims targets through Eureka service IDs and authenticate with
+`TRUCARE_SERVICE_USERNAME` and `TRUCARE_SERVICE_PASSWORD` Basic-auth
+credentials. The receiving Member, Provider, Claim, and Policy services grant
+that account only the `SERVICE` role. Configure the same service credentials
+for those callers and receivers, use strong deployment-specific credentials outside local
+development, and protect Basic authentication with TLS in deployed
+environments. Payment-to-Settlement retains its separate configured account.
+Set `EUREKA_URL` to override the local default
+`http://localhost:8761/eureka/`; Feign service calls do not use the public
+Gateway.
+
+For local development, database URLs and usernames are configured directly in
+each service's `src/main/resources` application properties/YAML files. The
+Eureka URL defaults to local Eureka and can be overridden with `EUREKA_URL`.
+The root-level `local-secrets.properties` file is
 gitignored and supplies the local `spring.datasource.password`; keep it local
 and never commit it. Create separate PostgreSQL databases for tests before
 running Maven: `trucare_auth_test`, `trucare_members_test`,
@@ -177,13 +193,14 @@ CREATE DATABASE trucare_notifications_security_test;
 CREATE DATABASE trucare_notifications_persistence_test;
 ```
 
-Registration is public and assigns only the `MEMBER` role. Elevated roles must
-be granted through a trusted administrative provisioning process, never through
-public registration. Login accepts a username or email plus password; send the
-returned JWT as `Authorization: Bearer <token>`. JWT validation is performed by
-the Gateway and each protected service. Claim, Policy, and Settlement Feign
-clients authenticate as service identities using short-lived JWTs. Payment's
-existing Settlement HTTP Basic integration is retained for compatibility.
+Registration is public and assigns only `PENDING_MEMBER`, which cannot access
+member resources. A trusted identity-verification and profile-linking process
+must promote an account to `MEMBER` only after confirming the member's identity;
+that promotion is currently an operator provisioning step, not an in-app
+workflow. Elevated roles must never be granted through public registration.
+Login accepts a username or email plus password; send the returned JWT as
+`Authorization: Bearer <token>`. JWT validation is performed by the Gateway and
+each protected service. Resource services do not receive the JWT signing key.
 
 ## Run Locally
 

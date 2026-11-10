@@ -1,6 +1,6 @@
 package com.trucare.policy.service;
 
-import com.trucare.policy.client.MemberServiceClient;
+import com.trucare.shared.client.MemberClient;
 import com.trucare.policy.dto.CreatePolicyRequest;
 import com.trucare.policy.dto.EnrollMemberRequest;
 import com.trucare.policy.dto.PolicyCoverageRequest;
@@ -38,7 +38,7 @@ class PolicyManagementServiceTest {
     private PolicyRepository policyRepository;
     private PolicyMemberRepository policyMemberRepository;
     private PolicyCoverageRepository policyCoverageRepository;
-    private MemberServiceClient memberServiceClient;
+    private MemberClient memberServiceClient;
     private PolicyManagementService service;
 
     @BeforeEach
@@ -46,7 +46,7 @@ class PolicyManagementServiceTest {
         policyRepository = mock(PolicyRepository.class);
         policyMemberRepository = mock(PolicyMemberRepository.class);
         policyCoverageRepository = mock(PolicyCoverageRepository.class);
-        memberServiceClient = mock(MemberServiceClient.class);
+        memberServiceClient = mock(MemberClient.class);
         service = new PolicyManagementService(
                 policyRepository, policyMemberRepository, policyCoverageRepository,
                 memberServiceClient, Mappers.getMapper(PolicyMapper.class));

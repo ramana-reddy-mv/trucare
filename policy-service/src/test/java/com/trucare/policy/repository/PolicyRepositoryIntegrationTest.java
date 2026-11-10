@@ -15,6 +15,7 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.core.env.Environment;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -32,7 +33,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
         "spring.datasource.url=jdbc:postgresql://localhost:5432/trucare_policies_test",
         "spring.datasource.driver-class-name=org.postgresql.Driver",
         "spring.datasource.username=postgres",
-        "spring.jpa.hibernate.ddl-auto=create-drop"
+        "spring.jpa.hibernate.ddl-auto=create-drop",
+        "EUREKA_URL=http://test-eureka:8761/eureka/"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class PolicyRepositoryIntegrationTest {
@@ -47,6 +49,18 @@ class PolicyRepositoryIntegrationTest {
 
     @Autowired
     private PolicyMemberRepository policyMemberRepository;
+    @Autowired
+    private Environment environment;
+
+    @Test
+    void memberFeignConnectionTimeoutAndEurekaAddressAreConfigured() {
+        assertEquals(2000, environment.getProperty(
+                "spring.cloud.openfeign.client.config.member-service.connect-timeout", Integer.class));
+        assertEquals(3000, environment.getProperty(
+                "spring.cloud.openfeign.client.config.member-service.read-timeout", Integer.class));
+        assertEquals("http://test-eureka:8761/eureka/",
+                environment.getProperty("eureka.client.service-url.defaultZone"));
+    }
 
     @Test
     void persistsPolicyCoverageAndLoadsCoverageWithPolicy() {

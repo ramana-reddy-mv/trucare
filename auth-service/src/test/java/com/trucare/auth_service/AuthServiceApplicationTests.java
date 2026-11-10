@@ -10,6 +10,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -22,7 +24,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.username=postgres",
         "spring.jpa.hibernate.ddl-auto=update",
         "eureka.client.enabled=false",
-        "security.jwt.secret-base64=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
         "security.jwt.expiration-seconds=900"
 })
 @AutoConfigureMockMvc
@@ -31,6 +32,11 @@ class AuthServiceApplicationTests {
     @Autowired private UserCredentialRepository users;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private JwtService jwtService;
+
+    @DynamicPropertySource
+    static void jwtKeys(DynamicPropertyRegistry registry) {
+        TestJwtKeys.configure(registry);
+    }
 
     @Test
     void registrationPersistsOnlyAnEncodedPasswordAndReturnsSafeUserResponse() throws Exception {
@@ -42,7 +48,7 @@ class AuthServiceApplicationTests {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.username").value(username))
                 .andExpect(jsonPath("$.email").value(email))
-                .andExpect(jsonPath("$.roles[0]").value("MEMBER"))
+                .andExpect(jsonPath("$.roles[0]").value("PENDING_MEMBER"))
                 .andExpect(jsonPath("$.password").doesNotExist());
 
         var stored = users.findByNameIgnoreCaseOrEmailIgnoreCase(username, username).orElseThrow();
@@ -103,8 +109,10 @@ class AuthServiceApplicationTests {
         String expired = jwtService.createToken("test.member", java.util.List.of("MEMBER"), -60);
         assertThrows(ExpiredJwtException.class, () -> jwtService.validateToken(expired));
 
-        JwtService wrongKey = new JwtService(
-                "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXphYmNkZWY=", "trucare-auth-service");
+        var otherPair = TestJwtKeys.generate();
+        String otherPrivate = java.util.Base64.getEncoder().encodeToString(otherPair.getPrivate().getEncoded());
+        String otherPublic = java.util.Base64.getEncoder().encodeToString(otherPair.getPublic().getEncoded());
+        JwtService wrongKey = new JwtService(otherPrivate, otherPublic, "trucare-auth-service");
         String token = jwtService.createToken("test.member", java.util.List.of("MEMBER"), 900);
         assertThrows(JwtException.class, () -> wrongKey.validateToken(token));
     }

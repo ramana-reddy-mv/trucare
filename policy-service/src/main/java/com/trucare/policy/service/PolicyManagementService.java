@@ -1,6 +1,6 @@
 package com.trucare.policy.service;
 
-import com.trucare.policy.client.MemberServiceClient;
+import com.trucare.shared.client.MemberClient;
 import com.trucare.policy.dto.CreatePolicyRequest;
 import com.trucare.policy.dto.EnrollMemberRequest;
 import com.trucare.policy.dto.PolicyMemberResponse;
@@ -39,14 +39,14 @@ public class PolicyManagementService {
     private final PolicyRepository policyRepository;
     private final PolicyMemberRepository policyMemberRepository;
     private final PolicyCoverageRepository policyCoverageRepository;
-    private final MemberServiceClient memberServiceClient;
+    private final MemberClient memberServiceClient;
     private final PolicyMapper policyMapper;
 
     public PolicyManagementService(
             PolicyRepository policyRepository,
             PolicyMemberRepository policyMemberRepository,
             PolicyCoverageRepository policyCoverageRepository,
-            MemberServiceClient memberServiceClient,
+            MemberClient memberServiceClient,
             PolicyMapper policyMapper) {
         this.policyRepository = policyRepository;
         this.policyMemberRepository = policyMemberRepository;
