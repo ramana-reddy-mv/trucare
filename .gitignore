@@ -44,3 +44,4 @@ local-secrets.properties
 ### OS ###
 *.swp
 *.swo
+/env.sh

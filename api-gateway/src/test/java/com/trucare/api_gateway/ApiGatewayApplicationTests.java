@@ -7,10 +7,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cloud.gateway.route.RouteDefinitionLocator;
 import org.springframework.cloud.gateway.route.RouteDefinition;
 import org.springframework.core.env.Environment;
+import org.springframework.context.ApplicationContext;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import com.trucare.shared.observability.CorrelationId;
 
 import java.time.Instant;
 import java.util.Set;
@@ -28,6 +31,7 @@ class ApiGatewayApplicationTests {
     @Autowired private WebTestClient webTestClient;
     @Autowired private RouteDefinitionLocator routeDefinitionLocator;
     @Autowired private Environment environment;
+    @Autowired private ApplicationContext applicationContext;
 
     @DynamicPropertySource
     static void jwtKeys(DynamicPropertyRegistry registry) {
@@ -65,6 +69,41 @@ class ApiGatewayApplicationTests {
                 .header("Authorization", "Bearer " + valid)
                 .exchange().expectStatus().value(status ->
                         org.junit.jupiter.api.Assertions.assertNotEquals(HttpStatus.UNAUTHORIZED.value(), status));
+    }
+
+    @Test
+    void correlationIdIsReturnedOrGeneratedAndUnsafeValuesAreRejected() {
+        webTestClient.get().uri("/not-routed")
+                .header(CorrelationId.HEADER, "business-request-42")
+                .exchange()
+                .expectHeader().valueEquals(CorrelationId.HEADER, "business-request-42")
+                .expectStatus().isUnauthorized();
+
+        webTestClient.get().uri("/not-routed")
+                .exchange()
+                .expectHeader().value(CorrelationId.HEADER,
+                        value -> org.junit.jupiter.api.Assertions.assertTrue(CorrelationId.isValid(value)));
+
+        webTestClient.get().uri("/not-routed")
+                .header(CorrelationId.HEADER, "unsafe value")
+                .exchange()
+                .expectStatus().isBadRequest();
+    }
+
+    @Test
+    void onlyPrometheusAndHealthAreExposedActuatorEndpoints() {
+        assertTrue(applicationContext.getBeansOfType(PrometheusMeterRegistry.class).size() == 1,
+                () -> "Prometheus registry beans: "
+                        + applicationContext.getBeansOfType(PrometheusMeterRegistry.class).keySet());
+        webTestClient.get().uri("/actuator/prometheus")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .value(body -> assertTrue(body.contains("http_server_requests_seconds")));
+
+        webTestClient.get().uri("/actuator/env")
+                .exchange()
+                .expectStatus().isUnauthorized();
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.trucare.claims.config;
 import com.trucare.shared.security.TruCareFeignSecurityConfiguration;
 import com.trucare.shared.security.TruCareJwtConfiguration;
 import com.trucare.shared.security.TruCareServiceAccountConfiguration;
+import com.trucare.shared.observability.CorrelationIdConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -17,7 +18,7 @@ import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
 @Import({TruCareJwtConfiguration.class, TruCareFeignSecurityConfiguration.class,
-        TruCareServiceAccountConfiguration.class})
+        TruCareServiceAccountConfiguration.class, CorrelationIdConfiguration.class})
 public class ClaimSecurityConfig {
     @Bean
     SecurityFilterChain claimSecurityFilterChain(
@@ -27,7 +28,7 @@ public class ClaimSecurityConfig {
                 .httpBasic(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/actuator/health", "/actuator/health/**",
+                        .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus",
                                 "/api-docs", "/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/claims/by-claim-id/**").hasRole("SERVICE")
                         .requestMatchers(HttpMethod.POST, "/api/claims")

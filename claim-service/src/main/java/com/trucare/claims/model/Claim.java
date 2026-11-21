@@ -41,7 +41,9 @@ public class Claim {
 
     private BigDecimal claimAmount;  // Claim amount
 
-    private String claimStatus;  // CLAIMED, APPROVED, REJECTED
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ClaimStatus claimStatus;  // CLAIMED, APPROVED, REJECTED
 
     private LocalDateTime createdAt;  // Claim creation date
 

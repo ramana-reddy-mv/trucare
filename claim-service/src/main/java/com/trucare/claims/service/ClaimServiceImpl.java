@@ -4,6 +4,7 @@ package com.trucare.claims.service;
 import com.trucare.claims.exception.ClaimNotFoundException;
 import com.trucare.claims.mapper.ClaimMapper;
 import com.trucare.claims.model.Claim;
+import com.trucare.claims.model.ClaimStatus;
 import com.trucare.claims.repository.ClaimRepository;
 import com.trucare.shared.claim.ClaimDTO;
 import com.trucare.shared.claim.CreateClaimDTO;
@@ -82,7 +83,7 @@ public class ClaimServiceImpl implements ClaimService {
         // Save Claim with Pending Status
         Claim claim = claimMapper.toClaim(createClaimDTO);
         claim.setClaimId(claimId);
-        claim.setClaimStatus("PENDING_DOCUMENTS");
+        claim.setClaimStatus(ClaimStatus.PENDING_DOCUMENTS);
         claim.setIdempotencyKey(normalizedKey);
         claim.setRequestHash(requestHash);
 
@@ -151,7 +152,7 @@ public class ClaimServiceImpl implements ClaimService {
             claim.setClaimId(String.valueOf(updateClaimDTO.getClaimId()));
         }
         if(updateClaimDTO.getClaimStatuses()!=null){
-            claim.setClaimStatus(updateClaimDTO.getClaimStatuses());
+            claim.setClaimStatus(ClaimStatus.valueOf(updateClaimDTO.getClaimStatuses()));
         }
         if(updateClaimDTO.getDocuments()!=null){
             claim.setDocumentIds(updateClaimDTO.getDocuments().stream().map(DocumentDTO::getId).toList());

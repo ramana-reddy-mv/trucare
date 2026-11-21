@@ -2,6 +2,7 @@ package com.trucare.member.config;
 
 import com.trucare.shared.security.TruCareJwtConfiguration;
 import com.trucare.shared.security.TruCareServiceAccountConfiguration;
+import com.trucare.shared.observability.CorrelationIdConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -15,7 +16,8 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
-@Import({TruCareJwtConfiguration.class, TruCareServiceAccountConfiguration.class})
+@Import({TruCareJwtConfiguration.class, TruCareServiceAccountConfiguration.class,
+        CorrelationIdConfiguration.class})
 public class MemberSecurityConfig {
     @Bean
     SecurityFilterChain memberSecurityFilterChain(
@@ -25,7 +27,7 @@ public class MemberSecurityConfig {
                 .httpBasic(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/actuator/health", "/actuator/health/**",
+                        .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/members/validate/**").hasRole("SERVICE")
                         .requestMatchers(HttpMethod.GET, "/api/members/*")

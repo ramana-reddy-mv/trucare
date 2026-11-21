@@ -1,6 +1,11 @@
 server:
   port: 8080
 
+security:
+  jwt:
+    public-key-base64: ${TRUCARE_JWT_PUBLIC_KEY_BASE64}
+    issuer: ${TRUCARE_JWT_ISSUER:trucare-auth-service}
+
 spring:
   application:
     name: api-gateway
@@ -93,7 +98,7 @@ spring:
             - Path=/api/claims/**
 
         - id: care-api
-          uri: lb://claims-processing-service
+          uri: lb://care-service
           predicates:
             - Path=/api/cares/**
 
@@ -134,13 +139,6 @@ spring:
           filters:
             - RewritePath=/members/(?<segment>.*), /api/members/${segment}
 
-        - id: care-management-service
-          uri: lb://care-management-service
-          predicates:
-            - Path=/care-plans/**
-          filters:
-            - RewritePath=/care-plans/(?<segment>.*), /api/care-plans/${segment}
-
         - id: claims-service
           uri: lb://claims-service
           predicates:
@@ -155,24 +153,10 @@ spring:
           filters:
             - RewritePath=/documents/(?<segment>.*), /api/documents/${segment}
 
-        - id: authorization-service
-          uri: lb://authorization-service
-          predicates:
-            - Path=/authorizations/**
-          filters:
-            - RewritePath=/authorizations/(?<segment>.*), /api/authorizations/${segment}
-
-        - id: audit-compliance-service
-          uri: lb://audit-compliance-service
-          predicates:
-            - Path=/audit-compliance/**
-          filters:
-            - RewritePath=/audit-compliance/(?<segment>.*), /api/audit-compliance/${segment}
-
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka/
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
 
 springdoc:
   swagger-ui:

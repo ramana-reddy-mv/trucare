@@ -15,6 +15,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @AutoConfigureMockMvc
@@ -73,6 +75,21 @@ class MemberServiceApplicationTests {
         mockMvc.perform(get("/api/members/M100")
                         .header("Authorization", bearer("PENDING_MEMBER", "alice")))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void correlationIdAndPrometheusEndpointAreAvailableWithoutExposingOtherActuatorData() throws Exception {
+        mockMvc.perform(get("/actuator/health")
+                        .header("X-Correlation-ID", "member-check-42"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Correlation-ID", "member-check-42"));
+
+        mockMvc.perform(get("/actuator/prometheus"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("jvm_memory_used_bytes")));
+
+        mockMvc.perform(get("/actuator/env"))
+                .andExpect(status().isUnauthorized());
     }
 
     private String bearer(String role, String subject) {

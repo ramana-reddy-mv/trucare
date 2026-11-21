@@ -36,7 +36,8 @@ public class GatewaySecurityConfig {
                 .authorizeExchange(authorize -> authorize
                         .pathMatchers(HttpMethod.POST, "/auth/addUser", "/auth/register",
                                 "/auth/token", "/auth/login").permitAll()
-                        .pathMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        .pathMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus")
+                        .permitAll()
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(converter)))
                 .build();
