@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: TruCare
+    orgId: 1
+    folder: TruCare
+    folderUid: trucare
+    type: file
+    disableDeletion: true
+    editable: true
+    options:
+      path: /etc/grafana/dashboards

@@ -15,4 +15,12 @@ public class CorrelationIdConfiguration {
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
         return registration;
     }
+
+    @Bean
+    FilterRegistrationBean<TraceContextRequestLoggingFilter> traceContextRequestLoggingFilterRegistration() {
+        FilterRegistrationBean<TraceContextRequestLoggingFilter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(new TraceContextRequestLoggingFilter());
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 11);
+        return registration;
+    }
 }
