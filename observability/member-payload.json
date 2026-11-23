@@ -1,0 +1,11 @@
+
+{
+  "username": "obs.test.member",
+  "firstName": "Observability",
+  "lastName": "Test",
+  "dateOfBirth": "1995-05-15",
+  "gender": "OTHER",
+  "contactNumber": "9876543210",
+  "address": "Bangalore",
+  "documentIds": []
+}

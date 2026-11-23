@@ -193,8 +193,10 @@ CREATE DATABASE trucare_notifications_security_test;
 CREATE DATABASE trucare_notifications_persistence_test;
 ```
 
-Registration is public and assigns only `PENDING_MEMBER`, which cannot access
-member resources. A trusted identity-verification and profile-linking process
+Registration is public and assigns only `PENDING_MEMBER`. This role can create
+only its own member profile and submit claims; it cannot read member resources.
+The Claim Service still validates member, provider, and policy eligibility. A
+trusted identity-verification and profile-linking process
 must promote an account to `MEMBER` only after confirming the member's identity;
 that promotion is currently an operator provisioning step, not an in-app
 workflow. Elevated roles must never be granted through public registration.
@@ -270,6 +272,11 @@ POST   /api/payments/{id}/retry     → Retry a definitively failed payment
 POST   /api/documents/upload        → Upload supporting document
 GET    /api/documents/{claimId}     → Get documents for a claim
 ```
+
+Registration expects JSON with `name`, `email`, and `password` fields. The name
+must be 3–100 characters using only letters, numbers, `.`, `_`, or `-`; the
+password must be 12–72 characters. Validation failures return field-specific
+messages in the response's `details` object.
 
 Claim creation requires an `Idempotency-Key` header. Repeating the same key with the
 same request returns the original claim; using that key with a different request

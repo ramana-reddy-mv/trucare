@@ -38,6 +38,10 @@ public class GatewaySecurityConfig {
                                 "/auth/token", "/auth/login").permitAll()
                         .pathMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus")
                         .permitAll()
+                        .pathMatchers("/monitoring/claims/health", "/monitoring/members/health").permitAll()
+                        .pathMatchers("/swagger-ui.html", "/swagger-ui/**", "/webjars/**", "/swagger-config",
+                                "/openapi/**", "/v3/api-docs/**")
+                        .permitAll()
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(converter)))
                 .build();

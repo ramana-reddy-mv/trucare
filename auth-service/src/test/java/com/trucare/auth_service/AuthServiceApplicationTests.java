@@ -58,6 +58,17 @@ class AuthServiceApplicationTests {
     }
 
     @Test
+    void invalidRegistrationReturnsFieldValidationDetails() throws Exception {
+        mockMvc.perform(post("/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registration("x", "not-an-email")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Invalid authentication request"))
+                .andExpect(jsonPath("$.details.name").value("must be between 3 and 100 characters"))
+                .andExpect(jsonPath("$.details.email").value("must be a valid email address"));
+    }
+
+    @Test
     void duplicateUsernameOrEmailIsRejectedWithoutReturningCredentials() throws Exception {
         String username = unique("test.member");
         String email = unique("member") + "@example.test";

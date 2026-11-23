@@ -17,6 +17,12 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 import com.trucare.claims.service.ClaimService;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import java.time.LocalDate;
+import com.trucare.shared.claim.ClaimPageDTO;
+import com.trucare.shared.claim.ClaimDashboardSummaryDTO;
 
 @RestController
 @RequestMapping("/api/claims")
@@ -29,6 +35,40 @@ public class ClaimController {
     @Autowired
     public ClaimController(@Qualifier("claimSync") ClaimService claimService) {
         this.claimService = claimService;
+    }
+
+    @GetMapping
+    public ResponseEntity<ClaimPageDTO<ClaimDTO>> searchClaims(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String memberId,
+            @RequestParam(required = false) String providerId,
+            @RequestParam(required = false) LocalDate from,
+            @RequestParam(required = false) LocalDate to,
+            @RequestParam(required = false) String claimId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "createdAt,desc") String sort) {
+        if (page < 0 || size < 1 || size > 100) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "page must be non-negative and size must be between 1 and 100");
+        }
+        String[] sortParts = sort.split(",", -1);
+        if (sortParts.length != 2 || !java.util.Set.of("createdAt", "updatedAt", "claimId", "claimAmount", "treatmentDate").contains(sortParts[0])
+                || !java.util.Set.of("asc", "desc").contains(sortParts[1].toLowerCase(java.util.Locale.ROOT))) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid sort");
+        }
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.fromString(sortParts[1]), sortParts[0]));
+        return ResponseEntity.ok(claimService.searchClaims(status, memberId, providerId, from, to, claimId, pageable));
+    }
+
+    @GetMapping("/dashboard/summary")
+    public ResponseEntity<ClaimDashboardSummaryDTO> dashboardSummary() {
+        return ResponseEntity.ok(claimService.dashboardSummary());
+    }
+
+    @GetMapping("/{claimId}")
+    public ResponseEntity<ClaimDTO> getClaim(@PathVariable String claimId) {
+        return ResponseEntity.ok(claimService.getClaimByBusinessId(claimId));
     }
 
     // Endpoint to create or update claim

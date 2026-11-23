@@ -22,7 +22,15 @@ public class MemberController {
     }
 
     @PostMapping("/addMember")
-    public ResponseEntity<MemberDTO> createMember(@RequestBody MemberDTO memberDTO) {
+    public ResponseEntity<MemberDTO> createMember(@RequestBody MemberDTO memberDTO,
+                                                  Authentication authentication) {
+        boolean pendingMember = authentication.getAuthorities().stream().anyMatch(authority ->
+                authority.getAuthority().equals("ROLE_PENDING_MEMBER"));
+        if (pendingMember) {
+            memberDTO.setUsername(authentication.getName());
+            memberDTO.setId(null);
+            memberDTO.setDocumentIds(List.of());
+        }
         MemberDTO createdMember = memberService.createMember(memberDTO);
         return ResponseEntity.ok(createdMember);
     }

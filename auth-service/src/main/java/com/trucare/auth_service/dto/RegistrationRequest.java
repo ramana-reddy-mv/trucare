@@ -6,15 +6,15 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public record RegistrationRequest(
-        @NotBlank
-        @Size(min = 3, max = 100)
-        @Pattern(regexp = "^[A-Za-z0-9._-]+$")
+        @NotBlank(message = "is required")
+        @Size(min = 3, max = 100, message = "must be between 3 and 100 characters")
+        @Pattern(regexp = "^[A-Za-z0-9._-]+$", message = "may contain only letters, numbers, '.', '_' and '-'")
         String name,
-        @NotBlank
-        @Email
-        @Size(max = 254)
+        @NotBlank(message = "is required")
+        @Email(message = "must be a valid email address")
+        @Size(max = 254, message = "must be at most 254 characters")
         String email,
-        @NotBlank
-        @Size(min = 12, max = 72)
+        @NotBlank(message = "is required")
+        @Size(min = 12, max = 72, message = "must be between 12 and 72 characters")
         String password) {
 }

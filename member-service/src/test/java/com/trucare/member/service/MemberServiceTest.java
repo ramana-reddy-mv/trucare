@@ -39,7 +39,7 @@ public class MemberServiceTest {
         member = new Member(1L, "ramanar", "ramana", "reddy",
                 LocalDate.of(1996, 6, 25), "MALE", "7799150283", "Bangalore", List.of(1L, 2L));
 
-        memberDTO = new MemberDTO(1L, "ramanar", "ramana", "reddy",
+        memberDTO = new MemberDTO(1L, "M123456", "ramanar", "ramana", "reddy",
                 LocalDate.of(1996, 6, 25), "MALE", "7799150283", "Bangalore", List.of(1L, 2L));
     }
 
@@ -65,6 +65,18 @@ public class MemberServiceTest {
     }
 
     @Test
+    void memberMapperIncludesGeneratedBusinessIdInResponses() {
+        Member persisted = new Member();
+        persisted.setId(42L);
+        persisted.setMemberId("M123456");
+        persisted.setUsername("ramanar");
+
+        MemberDTO response = MemberMapper.INSTANCE.toDTO(persisted);
+
+        assertEquals("M123456", response.getMemberId());
+    }
+
+    @Test
     void createMemberFailTest(){
         when(memberRepository.existsByUsername(memberDTO.getUsername())).thenReturn(true);
 
@@ -85,7 +97,7 @@ public class MemberServiceTest {
     void getMemberByIdSuccessTest(){
         //given
         Member member = new Member(1L, "ramanar","ramana","reddy", LocalDate.of(1996, 6,25),"MALE","7799150283","Banglore", List.of(1L,2L));
-        MemberDTO memberDTO =  new MemberDTO(1L, "ramanar","ramana","reddy", LocalDate.of(1996, 6,25),"MALE","7799150283","Banglore", List.of(1L,2L));
+        MemberDTO memberDTO =  new MemberDTO(1L, "M123456", "ramanar","ramana","reddy", LocalDate.of(1996, 6,25),"MALE","7799150283","Banglore", List.of(1L,2L));
 
         when(memberRepository.findById(1L)).thenReturn(Optional.of(member)); //✅ Mock DB
         when(memberMapper.toDTO(member)).thenReturn(memberDTO); // MOck mapping

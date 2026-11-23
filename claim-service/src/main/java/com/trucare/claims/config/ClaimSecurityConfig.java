@@ -29,10 +29,10 @@ public class ClaimSecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus",
-                                "/api-docs", "/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                                "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/claims/by-claim-id/**").hasRole("SERVICE")
                         .requestMatchers(HttpMethod.POST, "/api/claims")
-                        .hasAnyRole("CLAIM_OFFICER", "SERVICE", "ADMIN")
+                        .hasAnyRole("PENDING_MEMBER", "CLAIM_OFFICER", "SERVICE", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/claims/**")
                         .hasAnyRole("CLAIM_OFFICER", "ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/claims/updateClaim/**")

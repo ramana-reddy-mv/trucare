@@ -13,6 +13,7 @@ import java.util.List;
 public class MemberDTO {
 
     private Long id;
+    private String memberId;
     private String username;
     private String firstName;
     private String lastName;

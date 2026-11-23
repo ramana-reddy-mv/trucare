@@ -13,6 +13,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.util.Optional;
+import java.util.List;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import com.trucare.claims.model.ClaimStatus;
+import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -98,6 +103,49 @@ class ClaimServiceImplTest {
 
         assertEquals(409, exception.getStatusCode().value());
         verify(claimRepository, times(1)).saveAndFlush(any(Claim.class));
+    }
+
+    @Test
+    void searchesClaimsAsPageAndMapsRowsToDtos() {
+        Claim entity = new Claim();
+        ClaimDTO dto = new ClaimDTO();
+        when(claimRepository.search(eq(ClaimStatus.APPROVED), eq("M1"), isNull(), any(), any(), eq("CLM"), any()))
+                .thenReturn(new PageImpl<>(List.of(entity), PageRequest.of(0, 10), 1));
+        when(claimMapper.toClaimDTO(entity)).thenReturn(dto);
+
+        var page = claimService.searchClaims("approved", "M1", null,
+                LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31), "CLM", PageRequest.of(0, 10));
+
+        assertEquals(List.of(dto), page.content());
+        assertEquals(1, page.totalElements());
+        verify(claimRepository).search(eq(ClaimStatus.APPROVED), eq("M1"), isNull(), any(), any(), eq("CLM"), any());
+    }
+
+    @Test
+    void rejectsReversedSearchDateRange() {
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> claimService.searchClaims(null, null, null,
+                        LocalDate.of(2026, 2, 1), LocalDate.of(2026, 1, 1), null, PageRequest.of(0, 10)));
+        assertEquals(400, error.getStatusCode().value());
+        verifyNoInteractions(claimRepository);
+    }
+
+    @Test
+    void dashboardUsesGroupedDatabaseCounts() {
+        when(claimRepository.countByStatus()).thenReturn(List.of(
+                new Object[]{ClaimStatus.APPROVED, 2L}, new Object[]{ClaimStatus.REJECTED, 1L},
+                new Object[]{ClaimStatus.PENDING_DOCUMENTS, 3L}));
+        when(claimRepository.count()).thenReturn(6L);
+        when(claimRepository.countByCreatedAtGreaterThanEqual(any())).thenReturn(4L);
+
+        var summary = claimService.dashboardSummary();
+
+        assertEquals(6, summary.totalClaims());
+        assertEquals(3, summary.pendingClaims());
+        assertEquals(2, summary.approvedClaims());
+        assertEquals(1, summary.rejectedClaims());
+        assertEquals(4, summary.claimsThisMonth());
+        assertEquals(3, summary.statusDistribution().size());
     }
 
     private CreateClaimDTO validRequest() {

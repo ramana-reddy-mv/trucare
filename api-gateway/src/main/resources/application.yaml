@@ -12,6 +12,20 @@ spring:
   cloud:
     gateway:
       routes:
+        - id: claims-health
+          uri: lb://claims-service
+          predicates:
+            - Path=/monitoring/claims/health
+          filters:
+            - SetPath=/actuator/health
+
+        - id: members-health
+          uri: lb://member-service
+          predicates:
+            - Path=/monitoring/members/health
+          filters:
+            - SetPath=/actuator/health
+
         - id: member-openapi
           uri: lb://member-service
           predicates:
@@ -31,7 +45,7 @@ spring:
           predicates:
             - Path=/openapi/claims
           filters:
-            - SetPath=/api-docs
+            - SetPath=/v3/api-docs
 
         - id: care-openapi
           uri: lb://care-service
@@ -159,8 +173,12 @@ eureka:
       defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
 
 springdoc:
+  api-docs:
+    enabled: ${TRUCARE_OPENAPI_ENABLED:true}
   swagger-ui:
     path: /swagger-ui.html
+    enabled: ${TRUCARE_OPENAPI_ENABLED:true}
+    config-url: /swagger-config
     urls:
       - name: Authentication Service
         url: /openapi/auth

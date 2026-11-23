@@ -7,6 +7,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestControllerAdvice
@@ -24,7 +25,12 @@ public class AuthExceptionHandler {
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, String>> invalidRequest() {
-        return ResponseEntity.badRequest().body(Map.of("error", "Invalid authentication request"));
+    public ResponseEntity<Map<String, Object>> invalidRequest(MethodArgumentNotValidException exception) {
+        Map<String, String> details = new LinkedHashMap<>();
+        exception.getBindingResult().getFieldErrors().forEach(error ->
+                details.putIfAbsent(error.getField(), error.getDefaultMessage()));
+        return ResponseEntity.badRequest().body(Map.of(
+                "error", "Invalid authentication request",
+                "details", details));
     }
 }

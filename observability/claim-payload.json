@@ -1,0 +1,10 @@
+
+{
+  "memberId": "1",
+  "providerId": "1",
+  "policyNumber": "POL-OBS-2026-001",
+  "treatmentType": "OBSERVABILITY_TEST",
+  "treatmentDate": "2026-11-23",
+  "claimAmount": 15000.00,
+  "documentIds": []
+}

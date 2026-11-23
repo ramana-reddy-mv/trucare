@@ -24,6 +24,14 @@ import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
+import com.trucare.shared.claim.ClaimPageDTO;
+import com.trucare.shared.claim.ClaimDashboardSummaryDTO;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 
 @Service("claimSync")
@@ -139,6 +147,40 @@ public class ClaimServiceImpl implements ClaimService {
 
         return claims.stream().map(claimMapper::toClaimDTO).toList();
     }
+
+    @Override
+    public ClaimPageDTO<ClaimDTO> searchClaims(String status, String memberId, String providerId,
+                                               LocalDate from, LocalDate to, String claimId, Pageable pageable) {
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "from must be on or before to");
+        }
+        ClaimStatus parsedStatus = null;
+        if (status != null && !status.isBlank()) {
+            try { parsedStatus = ClaimStatus.valueOf(status.trim().toUpperCase(java.util.Locale.ROOT)); }
+            catch (IllegalArgumentException exception) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid claim status");
+            }
+        }
+        var result = claimRepository.search(parsedStatus, blankToNull(memberId), blankToNull(providerId),
+                from == null ? null : from.atStartOfDay(), to == null ? null : to.plusDays(1).atStartOfDay(),
+                blankToNull(claimId), pageable);
+        return new ClaimPageDTO<>(result.getContent().stream().map(claimMapper::toClaimDTO).toList(),
+                result.getNumber(), result.getSize(), result.getTotalElements(), result.getTotalPages(),
+                result.isFirst(), result.isLast());
+    }
+
+    @Override
+    public ClaimDashboardSummaryDTO dashboardSummary() {
+        Map<String, Long> counts = claimRepository.countByStatus().stream().collect(Collectors.toMap(
+                row -> ((ClaimStatus) row[0]).name(), row -> (Long) row[1]));
+        return new ClaimDashboardSummaryDTO(claimRepository.count(),
+                counts.entrySet().stream().filter(e -> e.getKey().startsWith("PENDING") || e.getKey().equals("SUBMITTED") || e.getKey().equals("UNDER_REVIEW")).mapToLong(Map.Entry::getValue).sum(),
+                counts.getOrDefault("APPROVED", 0L), counts.getOrDefault("REJECTED", 0L),
+                claimRepository.countByCreatedAtGreaterThanEqual(YearMonth.now().atDay(1).atStartOfDay()),
+                counts.entrySet().stream().map(e -> new ClaimDashboardSummaryDTO.StatusCount(e.getKey(), e.getValue())).toList());
+    }
+
+    private String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
 
     @Override
     public ClaimDTO updateClaim(String claimId, UpdateClaimDTO updateClaimDTO) {

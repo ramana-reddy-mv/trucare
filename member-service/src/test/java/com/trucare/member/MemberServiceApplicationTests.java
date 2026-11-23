@@ -2,11 +2,13 @@ package com.trucare.member;
 
 import com.trucare.member.model.Member;
 import com.trucare.member.repository.MemberRepository;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -15,8 +17,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @AutoConfigureMockMvc
@@ -75,6 +79,25 @@ class MemberServiceApplicationTests {
         mockMvc.perform(get("/api/members/M100")
                         .header("Authorization", bearer("PENDING_MEMBER", "alice")))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void pendingMemberCanCreateOnlyOwnProfileWithoutSuppliedDatabaseIds() throws Exception {
+        Long existingId = members.findByMemberId("M100").orElseThrow().getId();
+        mockMvc.perform(post("/api/members/addMember")
+                        .header("Authorization", bearer("PENDING_MEMBER", "new-member"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"id":%d,"username":"mallory","firstName":"New","lastName":"Member",
+                                 "gender":"OTHER","documentIds":[123]}
+                                """.formatted(existingId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("new-member"))
+                .andExpect(jsonPath("$.documentIds").isEmpty());
+
+        Assertions.assertEquals(2, members.count());
+        Assertions.assertEquals("Alice", members.findByMemberId("M100").orElseThrow().getFirstName());
+        Assertions.assertEquals("new-member", members.findByUsername("new-member").orElseThrow().getUsername());
     }
 
     @Test

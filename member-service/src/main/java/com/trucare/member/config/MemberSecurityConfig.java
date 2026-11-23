@@ -32,6 +32,8 @@ public class MemberSecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/members/validate/**").hasRole("SERVICE")
                         .requestMatchers(HttpMethod.GET, "/api/members/*")
                         .hasAnyRole("MEMBER", "ADMIN", "SERVICE")
+                        .requestMatchers(HttpMethod.POST, "/api/members/addMember")
+                        .hasAnyRole("PENDING_MEMBER", "ADMIN", "SERVICE")
                         .requestMatchers("/api/members/**").hasAnyRole("ADMIN", "SERVICE")
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(oauth -> oauth.jwt(jwt ->

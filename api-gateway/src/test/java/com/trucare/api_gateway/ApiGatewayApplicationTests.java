@@ -6,6 +6,8 @@ import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWeb
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cloud.gateway.route.RouteDefinitionLocator;
 import org.springframework.cloud.gateway.route.RouteDefinition;
+import org.springframework.cloud.client.DefaultServiceInstance;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.core.env.Environment;
 import org.springframework.context.ApplicationContext;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
@@ -17,9 +19,15 @@ import com.trucare.shared.observability.CorrelationId;
 
 import java.time.Instant;
 import java.util.Set;
+import java.util.List;
+import com.sun.net.httpserver.HttpServer;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.when;
+import org.springframework.boot.test.mock.mockito.MockBean;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "eureka.client.enabled=false",
@@ -32,6 +40,7 @@ class ApiGatewayApplicationTests {
     @Autowired private RouteDefinitionLocator routeDefinitionLocator;
     @Autowired private Environment environment;
     @Autowired private ApplicationContext applicationContext;
+    @MockBean private DiscoveryClient discoveryClient;
 
     @DynamicPropertySource
     static void jwtKeys(DynamicPropertyRegistry registry) {
@@ -121,8 +130,68 @@ class ApiGatewayApplicationTests {
         }
         assertTrue(routes.stream().anyMatch(route -> route.getId().equals("care-api")
                 && route.getUri().getHost().equals("care-service")));
+        assertTrue(routes.stream().anyMatch(route -> route.getId().equals("claims-health")
+                && route.getUri().getHost().equals("claims-service")));
+        assertTrue(routes.stream().anyMatch(route -> route.getId().equals("members-health")
+                && route.getUri().getHost().equals("member-service")));
+        Set<String> openApiRoutes = Set.of("auth-openapi", "member-openapi", "provider-openapi",
+                "claims-openapi", "care-openapi", "document-openapi", "policy-openapi",
+                "settlement-openapi", "payment-openapi", "notification-openapi");
+        assertTrue(routes.stream().map(RouteDefinition::getId).collect(java.util.stream.Collectors.toSet())
+                .containsAll(openApiRoutes));
+        for (String routeId : openApiRoutes) {
+            RouteDefinition route = routes.stream().filter(candidate -> candidate.getId().equals(routeId))
+                    .findFirst().orElseThrow();
+            assertTrue(route.getFilters().stream().anyMatch(filter -> filter.getName().equals("SetPath")
+                    && "/v3/api-docs".equals(filter.getArgs().get("_genkey_0"))), routeId);
+        }
         assertEquals("http://test-eureka:8761/eureka/",
                 environment.getProperty("eureka.client.service-url.defaultZone"));
+    }
+
+    @Test
+    void swaggerUiIsAvailableWithoutChangingBusinessApiAuthentication() {
+        webTestClient.get().uri("/swagger-ui.html")
+                .exchange()
+                .expectStatus().isFound()
+                .expectHeader().valueEquals("Location", "/webjars/swagger-ui/index.html");
+        webTestClient.get().uri("/webjars/swagger-ui/index.html")
+                .exchange()
+                .expectStatus().isOk();
+        webTestClient.get().uri("/api/claims")
+                .exchange()
+                .expectStatus().isUnauthorized();
+    }
+
+    @Test
+    void swaggerConfigurationOmitsUnavailableServiceSpecifications() throws Exception {
+        HttpServer healthyService = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        healthyService.createContext("/v3/api-docs", exchange -> {
+            byte[] spec = "{\"openapi\":\"3.0.1\",\"paths\":{}}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, spec.length);
+            try (var responseBody = exchange.getResponseBody()) {
+                responseBody.write(spec);
+            }
+        });
+        healthyService.start();
+        when(discoveryClient.getInstances("auth-service")).thenReturn(List.of(
+                new DefaultServiceInstance("auth-test", "auth-service", "127.0.0.1",
+                        healthyService.getAddress().getPort(), false)));
+        when(discoveryClient.getInstances("member-service")).thenReturn(List.of(
+                new DefaultServiceInstance("member-test", "member-service", "127.0.0.1", 1, false)));
+        try {
+        webTestClient.get().uri("/swagger-config")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.urls").isArray()
+                .jsonPath("$.urls.length()").isEqualTo(1)
+                .jsonPath("$.urls[0].url").isEqualTo("/openapi/auth")
+                .jsonPath("$.configUrl").isEqualTo("/swagger-config");
+        } finally {
+            healthyService.stop(0);
+        }
     }
 
 }
