@@ -3,7 +3,6 @@ package com.trucare.claims.mapper;
 
 import com.trucare.claims.model.Claim;
 import com.trucare.shared.claim.ClaimDTO;
-import com.trucare.shared.claim.CreateClaimDTO;
 import com.trucare.shared.claim.UpdateClaimDTO;
 import com.trucare.shared.document.DocumentDTO;
 import org.mapstruct.Mapper;
@@ -22,9 +21,6 @@ public interface ClaimMapper {
 
     @Mapping(target = "claimStatus", source = "claimStatuses")
     Claim toClaim(ClaimDTO claimDTO);
-
-    @Mapping(target = "claimStatus", source = "claimStatuses")
-    Claim toClaim(CreateClaimDTO createClaimDTO);
 
     @Mapping(target = "claimStatus", source = "claimStatuses")
     Claim toClaim(UpdateClaimDTO updateClaimDTO);

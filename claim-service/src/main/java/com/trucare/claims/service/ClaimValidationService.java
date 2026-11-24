@@ -7,6 +7,8 @@ import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ClaimValidationService {
@@ -29,8 +31,9 @@ public class ClaimValidationService {
     }
 
     private boolean memberValidationFallback(String memberId, Throwable throwable) {
-        logger.warn("Member validation failed after retries; rejecting claim creation", throwable);
-        return false;
+        logger.warn("Member validation service failed after retries; claim creation cannot continue");
+        throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                "Member validity could not be verified; retry claim submission");
     }
 
     @Retry(name = "providerValidation")
@@ -40,7 +43,8 @@ public class ClaimValidationService {
     }
 
     private boolean providerValidationFallback(String providerId, Throwable throwable) {
-        logger.warn("Provider validation failed after retries; rejecting claim creation", throwable);
-        return false;
+        logger.warn("Provider validation service failed after retries; claim creation cannot continue");
+        throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                "Provider validity could not be verified; retry claim submission");
     }
 }

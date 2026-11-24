@@ -25,7 +25,7 @@ public class MemberController {
     public ResponseEntity<MemberDTO> createMember(@RequestBody MemberDTO memberDTO,
                                                   Authentication authentication) {
         boolean pendingMember = authentication.getAuthorities().stream().anyMatch(authority ->
-                authority.getAuthority().equals("ROLE_PENDING_MEMBER"));
+                authority.getAuthority().equals("ADMIN") || authority.getAuthority().equals("SERVICE"));
         if (pendingMember) {
             memberDTO.setUsername(authentication.getName());
             memberDTO.setId(null);

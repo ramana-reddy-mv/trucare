@@ -385,6 +385,19 @@ The Policy API is included in the unified Swagger UI at
 Claim creation now requires the policy and treatment fields so Claim Service can
 check eligibility before persisting a claim:
 
+`memberId`, `providerId`, and `policyNumber` must be non-blank and at most 128
+characters. `treatmentType` must be one of `HOSPITALIZATION`, `SURGERY`,
+`MATERNITY`, `OUTPATIENT`, `EMERGENCY`, `DIAGNOSTICS`, or `DENTAL`.
+`treatmentDate` is required in ISO `YYYY-MM-DD` format; the Policy Service checks
+it against policy validity and enrollment/waiting periods. `claimAmount` must be
+positive, have no more than 17 integer digits and 2 fractional digits, and be no
+greater than eligible coverage. Invalid request fields return HTTP 400 with a
+`validationErrors` array. Policy eligibility rejection returns HTTP 422; missing
+policy/member/provider resources return HTTP 404, and a downstream service outage
+returns HTTP 503. The server generates `claimId`, starts status at
+`PENDING_DOCUMENTS`, assigns timestamps, and initializes `documentIds` to an empty
+list. Client values for those managed fields are ignored.
+
 ```json
 {
   "memberId": "M123456",

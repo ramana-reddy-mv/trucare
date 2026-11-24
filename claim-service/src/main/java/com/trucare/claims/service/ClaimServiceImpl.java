@@ -2,6 +2,10 @@ package com.trucare.claims.service;
 
 
 import com.trucare.claims.exception.ClaimNotFoundException;
+import com.trucare.claims.exception.PolicyEligibilityException;
+import com.trucare.claims.exception.PolicyNotFoundException;
+import com.trucare.claims.exception.MemberNotFoundException;
+import com.trucare.claims.exception.ProviderNotFoundException;
 import com.trucare.claims.mapper.ClaimMapper;
 import com.trucare.claims.model.Claim;
 import com.trucare.claims.model.ClaimStatus;
@@ -12,7 +16,6 @@ import com.trucare.shared.claim.UpdateClaimDTO;
 import com.trucare.shared.document.DocumentDTO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.validation.ValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -24,6 +27,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.ArrayList;
 import org.springframework.data.domain.Pageable;
 import com.trucare.shared.claim.ClaimPageDTO;
 import com.trucare.shared.claim.ClaimDashboardSummaryDTO;
@@ -38,17 +42,20 @@ import java.util.stream.Collectors;
 public class ClaimServiceImpl implements ClaimService {
 
     private final ClaimRepository claimRepository;
+    private final ClaimPersistenceService claimPersistenceService;
     private final ClaimMapper claimMapper;
     private final ClaimValidationService claimValidationService;
     private final ClaimPolicyEligibilityService claimPolicyEligibilityService;
     private final ObjectMapper objectMapper;
 
     @Autowired
-    public ClaimServiceImpl(ClaimRepository claimRepository, ClaimMapper claimMapper,
+    public ClaimServiceImpl(ClaimRepository claimRepository, ClaimPersistenceService claimPersistenceService,
+                            ClaimMapper claimMapper,
                             ClaimValidationService claimValidationService,
                             ClaimPolicyEligibilityService claimPolicyEligibilityService,
                             ObjectMapper objectMapper) {
         this.claimRepository = claimRepository;
+        this.claimPersistenceService = claimPersistenceService;
         this.claimMapper = claimMapper;
         this.claimValidationService = claimValidationService;
         this.claimPolicyEligibilityService = claimPolicyEligibilityService;
@@ -72,31 +79,47 @@ public class ClaimServiceImpl implements ClaimService {
 
         var eligibility = claimPolicyEligibilityService.checkEligibility(createClaimDTO);
         if (!eligibility.eligible()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            if ("Policy not found".equalsIgnoreCase(eligibility.reason())) {
+                throw new PolicyNotFoundException(
+                        "Policy " + createClaimDTO.getPolicyNumber() + " was not found");
+            }
+            throw new PolicyEligibilityException(
                     eligibility.reason() == null || eligibility.reason().isBlank()
                             ? "Policy is not eligible for this treatment"
                             : eligibility.reason());
         }
 
         // Validate Member and Provider using Feign Clients with circuit breakers
-        boolean isMemberValid = claimValidationService.validateMember(createClaimDTO.getMemberId());
-        boolean isProviderValid = claimValidationService.validateProvider(createClaimDTO.getProviderId());
-
-        if (!isMemberValid || !isProviderValid) {
-            throw new ValidationException("Invalid member or provider");
+        if (!claimValidationService.validateMember(createClaimDTO.getMemberId())) {
+            throw new MemberNotFoundException(
+                    "Member " + createClaimDTO.getMemberId() + " was not found or is invalid");
+        }
+        if (!claimValidationService.validateProvider(createClaimDTO.getProviderId())) {
+            throw new ProviderNotFoundException(
+                    "Provider " + createClaimDTO.getProviderId() + " was not found or is invalid");
         }
 
         String claimId = "CLM"+ UUID.randomUUID().toString().substring(0,6).toUpperCase();
 
         // Save Claim with Pending Status
-        Claim claim = claimMapper.toClaim(createClaimDTO);
+        Claim claim = new Claim();
         claim.setClaimId(claimId);
+        claim.setMemberId(createClaimDTO.getMemberId());
+        claim.setProviderId(createClaimDTO.getProviderId());
+        claim.setPolicyNumber(createClaimDTO.getPolicyNumber());
+        claim.setTreatmentType(createClaimDTO.getTreatmentType());
+        claim.setTreatmentDate(createClaimDTO.getTreatmentDate());
+        claim.setClaimAmount(createClaimDTO.getClaimAmount());
         claim.setClaimStatus(ClaimStatus.PENDING_DOCUMENTS);
+        LocalDateTime createdAt = LocalDateTime.now();
+        claim.setCreatedAt(createdAt);
+        claim.setUpdatedAt(createdAt);
+        claim.setDocumentIds(new ArrayList<>());
         claim.setIdempotencyKey(normalizedKey);
         claim.setRequestHash(requestHash);
 
         try {
-            Claim savedClaim = claimRepository.saveAndFlush(claim);
+            Claim savedClaim = claimPersistenceService.create(claim);
             return new ClaimCreationResult(claimMapper.toClaimDTO(savedClaim), false);
         } catch (DataIntegrityViolationException exception) {
             Optional<Claim> concurrentClaim = claimRepository.findByIdempotencyKey(normalizedKey);

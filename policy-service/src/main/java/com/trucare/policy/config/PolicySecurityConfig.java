@@ -29,7 +29,7 @@ public class PolicySecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/actuator/health", "/actuator/health/**",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/policies/eligibility/check").hasRole("SERVICE")
+                        .requestMatchers(HttpMethod.POST, "/api/policies/eligibility/check").hasAnyRole("SERVICE","ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/policies/**")
                         .hasAnyRole("ADMIN", "CLAIM_OFFICER", "SERVICE")
                         .requestMatchers("/api/policies/**").hasAnyRole("ADMIN", "SERVICE")

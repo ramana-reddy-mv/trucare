@@ -3,7 +3,7 @@ package com.trucare.claims.controller;
 
 import com.trucare.claims.model.Claim;
 import com.trucare.shared.claim.ClaimDTO;
-import com.trucare.shared.claim.CreateClaimDTO;
+import com.trucare.claims.dto.CreateClaimRequest;
 import com.trucare.shared.claim.UpdateClaimDTO;
 import com.trucare.claims.service.ClaimCreationResult;
 import lombok.extern.slf4j.Slf4j;
@@ -75,7 +75,7 @@ public class ClaimController {
     @PostMapping
     public ResponseEntity<ClaimDTO> createClaim(
             @RequestHeader("Idempotency-Key") String idempotencyKey,
-            @Valid @RequestBody CreateClaimDTO createClaimDTO) {
+            @Valid @RequestBody CreateClaimRequest createClaimDTO) {
         ClaimCreationResult result = claimService.createClaim(createClaimDTO, idempotencyKey);
         HttpStatus status = result.replayed() ? HttpStatus.OK : HttpStatus.CREATED;
         return new ResponseEntity<>(result.claim(), status);

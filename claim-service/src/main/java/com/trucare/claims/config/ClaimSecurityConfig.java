@@ -13,6 +13,7 @@ import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import jakarta.servlet.DispatcherType;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.web.SecurityFilterChain;
 
@@ -20,6 +21,7 @@ import org.springframework.security.web.SecurityFilterChain;
 @Import({TruCareJwtConfiguration.class, TruCareFeignSecurityConfiguration.class,
         TruCareServiceAccountConfiguration.class, CorrelationIdConfiguration.class})
 public class ClaimSecurityConfig {
+
     @Bean
     SecurityFilterChain claimSecurityFilterChain(
             HttpSecurity http,
@@ -28,13 +30,14 @@ public class ClaimSecurityConfig {
                 .httpBasic(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus",
-                                "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                                "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
+                        .permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/claims/by-claim-id/**").hasRole("SERVICE")
                         .requestMatchers(HttpMethod.POST, "/api/claims")
                         .hasAnyRole("PENDING_MEMBER", "CLAIM_OFFICER", "SERVICE", "ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/api/claims/**")
-                        .hasAnyRole("CLAIM_OFFICER", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/claims/**").hasAnyRole("CLAIM_OFFICER", "ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/claims/updateClaim/**")
                         .hasAnyRole("CLAIM_OFFICER", "ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/claims/**").hasRole("ADMIN")

@@ -26,76 +26,6 @@ spring:
           filters:
             - SetPath=/actuator/health
 
-        - id: member-openapi
-          uri: lb://member-service
-          predicates:
-            - Path=/openapi/members
-          filters:
-            - SetPath=/v3/api-docs
-
-        - id: provider-openapi
-          uri: lb://provider-service
-          predicates:
-            - Path=/openapi/providers
-          filters:
-            - SetPath=/v3/api-docs
-
-        - id: claims-openapi
-          uri: lb://claims-service
-          predicates:
-            - Path=/openapi/claims
-          filters:
-            - SetPath=/v3/api-docs
-
-        - id: care-openapi
-          uri: lb://care-service
-          predicates:
-            - Path=/openapi/care
-          filters:
-            - SetPath=/v3/api-docs
-
-        - id: document-openapi
-          uri: lb://document-service
-          predicates:
-            - Path=/openapi/documents
-          filters:
-            - SetPath=/v3/api-docs
-
-        - id: policy-openapi
-          uri: lb://policy-service
-          predicates:
-            - Path=/openapi/policies
-          filters:
-            - SetPath=/v3/api-docs
-
-        - id: settlement-openapi
-          uri: lb://settlement-service
-          predicates:
-            - Path=/openapi/settlements
-          filters:
-            - SetPath=/v3/api-docs
-
-        - id: payment-openapi
-          uri: lb://payment-service
-          predicates:
-            - Path=/openapi/payments
-          filters:
-            - SetPath=/v3/api-docs
-
-        - id: notification-openapi
-          uri: lb://notification-service
-          predicates:
-            - Path=/openapi/notifications
-          filters:
-            - SetPath=/v3/api-docs
-
-        - id: auth-openapi
-          uri: lb://auth-service
-          predicates:
-            - Path=/openapi/auth
-          filters:
-            - SetPath=/v3/api-docs
-
         - id: member-api
           uri: lb://member-service
           predicates:
@@ -167,6 +97,11 @@ spring:
           filters:
             - RewritePath=/documents/(?<segment>.*), /api/documents/${segment}
 
+gateway:
+  swagger:
+    refresh-interval-ms: ${SWAGGER_REFRESH_INTERVAL_MS:15000}
+    response-timeout-ms: ${SWAGGER_RESPONSE_TIMEOUT_MS:1000}
+
 eureka:
   client:
     service-url:
@@ -179,24 +114,3 @@ springdoc:
     path: /swagger-ui.html
     enabled: ${TRUCARE_OPENAPI_ENABLED:true}
     config-url: /swagger-config
-    urls:
-      - name: Authentication Service
-        url: /openapi/auth
-      - name: Member Service
-        url: /openapi/members
-      - name: Provider Service
-        url: /openapi/providers
-      - name: Claims Service
-        url: /openapi/claims
-      - name: Care Service
-        url: /openapi/care
-      - name: Document Service
-        url: /openapi/documents
-      - name: Policy Service
-        url: /openapi/policies
-      - name: Settlement Service
-        url: /openapi/settlements
-      - name: Payment Service
-        url: /openapi/payments
-      - name: Notification Service
-        url: /openapi/notifications

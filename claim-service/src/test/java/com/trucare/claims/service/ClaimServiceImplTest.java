@@ -14,6 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.List;
+import java.util.ArrayList;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import com.trucare.claims.model.ClaimStatus;
@@ -23,12 +24,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class ClaimServiceImplTest {
 
     private ClaimRepository claimRepository;
+    private ClaimPersistenceService claimPersistenceService;
     private ClaimMapper claimMapper;
     private ClaimValidationService claimValidationService;
     private ClaimPolicyEligibilityService claimPolicyEligibilityService;
@@ -37,12 +40,13 @@ class ClaimServiceImplTest {
     @BeforeEach
     void setUp() {
         claimRepository = mock(ClaimRepository.class);
+        claimPersistenceService = mock(ClaimPersistenceService.class);
         claimMapper = mock(ClaimMapper.class);
         claimValidationService = mock(ClaimValidationService.class);
         claimPolicyEligibilityService = mock(ClaimPolicyEligibilityService.class);
         claimService = new ClaimServiceImpl(
-                claimRepository, claimMapper, claimValidationService,
-                claimPolicyEligibilityService, new ObjectMapper());
+                claimRepository, claimPersistenceService, claimMapper, claimValidationService,
+                claimPolicyEligibilityService, new ObjectMapper().findAndRegisterModules());
     }
 
     @Test
@@ -56,8 +60,7 @@ class ClaimServiceImplTest {
         when(claimPolicyEligibilityService.checkEligibility(request)).thenReturn(eligibleResponse());
         when(claimValidationService.validateMember("member-1")).thenReturn(true);
         when(claimValidationService.validateProvider("provider-1")).thenReturn(true);
-        when(claimMapper.toClaim(request)).thenReturn(new Claim());
-        when(claimRepository.saveAndFlush(any(Claim.class))).thenAnswer(invocation -> {
+        when(claimPersistenceService.create(any(Claim.class))).thenAnswer(invocation -> {
             Claim claim = invocation.getArgument(0);
             persistedClaim.setIdempotencyKey(claim.getIdempotencyKey());
             persistedClaim.setRequestHash(claim.getRequestHash());
@@ -71,7 +74,7 @@ class ClaimServiceImplTest {
         assertFalse(first.replayed());
         assertTrue(replay.replayed());
         assertEquals(response, replay.claim());
-        verify(claimRepository, times(1)).saveAndFlush(any(Claim.class));
+        verify(claimPersistenceService, times(1)).create(any(Claim.class));
         verify(claimValidationService, times(1)).validateMember("member-1");
     }
 
@@ -84,8 +87,7 @@ class ClaimServiceImplTest {
         when(claimPolicyEligibilityService.checkEligibility(originalRequest)).thenReturn(eligibleResponse());
         when(claimValidationService.validateMember("member-1")).thenReturn(true);
         when(claimValidationService.validateProvider("provider-1")).thenReturn(true);
-        when(claimMapper.toClaim(originalRequest)).thenReturn(new Claim());
-        when(claimRepository.saveAndFlush(any(Claim.class))).thenAnswer(invocation -> {
+        when(claimPersistenceService.create(any(Claim.class))).thenAnswer(invocation -> {
             Claim claim = invocation.getArgument(0);
             persistedClaim.setIdempotencyKey(claim.getIdempotencyKey());
             persistedClaim.setRequestHash(claim.getRequestHash());
@@ -102,7 +104,100 @@ class ClaimServiceImplTest {
                 () -> claimService.createClaim(differentRequest, "request-123"));
 
         assertEquals(409, exception.getStatusCode().value());
-        verify(claimRepository, times(1)).saveAndFlush(any(Claim.class));
+        verify(claimPersistenceService, times(1)).create(any(Claim.class));
+    }
+
+    @Test
+    void createsClaimUsingOnlyClientFieldsAndServerManagedLifecycleValues() {
+        CreateClaimDTO request = validRequest();
+        Claim persisted = new Claim();
+        when(claimRepository.findByIdempotencyKey("request-server-fields")).thenReturn(Optional.empty());
+        when(claimPolicyEligibilityService.checkEligibility(request)).thenReturn(eligibleResponse());
+        when(claimValidationService.validateMember("member-1")).thenReturn(true);
+        when(claimValidationService.validateProvider("provider-1")).thenReturn(true);
+        when(claimPersistenceService.create(any(Claim.class))).thenAnswer(invocation -> {
+            Claim candidate = invocation.getArgument(0);
+            persisted.setId(1L);
+            persisted.setClaimId(candidate.getClaimId());
+            persisted.setMemberId(candidate.getMemberId());
+            persisted.setProviderId(candidate.getProviderId());
+            persisted.setPolicyNumber(candidate.getPolicyNumber());
+            persisted.setTreatmentType(candidate.getTreatmentType());
+            persisted.setTreatmentDate(candidate.getTreatmentDate());
+            persisted.setClaimAmount(candidate.getClaimAmount());
+            persisted.setClaimStatus(candidate.getClaimStatus());
+            persisted.setCreatedAt(candidate.getCreatedAt());
+            persisted.setUpdatedAt(candidate.getUpdatedAt());
+            persisted.setDocumentIds(candidate.getDocumentIds());
+            return persisted;
+        });
+        when(claimMapper.toClaimDTO(persisted)).thenReturn(new ClaimDTO());
+
+        claimService.createClaim(request, "request-server-fields");
+
+        assertTrue(persisted.getClaimId().matches("CLM[0-9A-F]{6}"));
+        assertEquals(ClaimStatus.PENDING_DOCUMENTS, persisted.getClaimStatus());
+        assertNotNull(persisted.getCreatedAt());
+        assertEquals(persisted.getCreatedAt(), persisted.getUpdatedAt());
+        assertEquals(new ArrayList<>(), persisted.getDocumentIds());
+        assertEquals("member-1", persisted.getMemberId());
+        assertEquals("provider-1", persisted.getProviderId());
+        assertEquals("POL1001", persisted.getPolicyNumber());
+        assertEquals("HOSPITALIZATION", persisted.getTreatmentType());
+        assertEquals(request.getClaimAmount(), persisted.getClaimAmount());
+    }
+
+    @Test
+    void memberFailureDoesNotPersistClaim() {
+        CreateClaimDTO request = validRequest();
+        when(claimRepository.findByIdempotencyKey("request-invalid-member")).thenReturn(Optional.empty());
+        when(claimPolicyEligibilityService.checkEligibility(request)).thenReturn(eligibleResponse());
+        when(claimValidationService.validateMember("member-1")).thenReturn(false);
+
+        assertThrows(com.trucare.claims.exception.MemberNotFoundException.class,
+                () -> claimService.createClaim(request, "request-invalid-member"));
+        verify(claimPersistenceService, never()).create(any());
+        verify(claimValidationService, never()).validateProvider(any());
+    }
+
+    @Test
+    void providerFailureDoesNotPersistClaim() {
+        CreateClaimDTO request = validRequest();
+        when(claimRepository.findByIdempotencyKey("request-invalid-provider")).thenReturn(Optional.empty());
+        when(claimPolicyEligibilityService.checkEligibility(request)).thenReturn(eligibleResponse());
+        when(claimValidationService.validateMember("member-1")).thenReturn(true);
+        when(claimValidationService.validateProvider("provider-1")).thenReturn(false);
+
+        assertThrows(com.trucare.claims.exception.ProviderNotFoundException.class,
+                () -> claimService.createClaim(request, "request-invalid-provider"));
+        verify(claimPersistenceService, never()).create(any());
+    }
+
+    @Test
+    void missingPolicyDoesNotPersistClaim() {
+        CreateClaimDTO request = validRequest();
+        when(claimRepository.findByIdempotencyKey("request-missing-policy")).thenReturn(Optional.empty());
+        when(claimPolicyEligibilityService.checkEligibility(request)).thenReturn(
+                new PolicyEligibilityResponse(false, null, "POL1001", "member-1", null,
+                        null, "HOSPITALIZATION", BigDecimal.ZERO, "Policy not found"));
+
+        assertThrows(com.trucare.claims.exception.PolicyNotFoundException.class,
+                () -> claimService.createClaim(request, "request-missing-policy"));
+        verify(claimPersistenceService, never()).create(any());
+    }
+
+    @Test
+    void ineligiblePolicyDoesNotPersistClaim() {
+        CreateClaimDTO request = validRequest();
+        when(claimRepository.findByIdempotencyKey("request-ineligible")).thenReturn(Optional.empty());
+        when(claimPolicyEligibilityService.checkEligibility(request)).thenReturn(
+                new PolicyEligibilityResponse(false, 1L, "POL1001", "member-1",
+                        null, null, "HOSPITALIZATION", null, "Applicable waiting period has not been completed"));
+
+        assertThrows(com.trucare.claims.exception.PolicyEligibilityException.class,
+                () -> claimService.createClaim(request, "request-ineligible"));
+        verify(claimPersistenceService, never()).create(any());
+        verifyNoInteractions(claimValidationService);
     }
 
     @Test
@@ -152,6 +247,9 @@ class ClaimServiceImplTest {
         CreateClaimDTO request = new CreateClaimDTO();
         request.setMemberId("member-1");
         request.setProviderId("provider-1");
+        request.setPolicyNumber("POL1001");
+        request.setTreatmentType("HOSPITALIZATION");
+        request.setTreatmentDate(LocalDate.of(2026, 1, 1));
         request.setClaimAmount(new BigDecimal("100.00"));
         return request;
     }

@@ -15,6 +15,9 @@ class ClaimPolicyEligibilityServiceTest {
     void policyServiceFailureIsNotReportedAsBusinessIneligibility() {
         PolicyClient client = mock(PolicyClient.class);
         CreateClaimDTO claim = new CreateClaimDTO();
+        claim.setMemberId("member-1");
+        claim.setPolicyNumber("policy-1");
+        claim.setTreatmentType("HOSPITALIZATION");
         ClaimPolicyEligibilityService service = new ClaimPolicyEligibilityService(client);
 
         ResponseStatusException exception = assertThrows(

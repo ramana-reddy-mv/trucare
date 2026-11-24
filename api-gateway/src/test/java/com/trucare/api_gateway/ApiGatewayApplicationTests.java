@@ -134,17 +134,8 @@ class ApiGatewayApplicationTests {
                 && route.getUri().getHost().equals("claims-service")));
         assertTrue(routes.stream().anyMatch(route -> route.getId().equals("members-health")
                 && route.getUri().getHost().equals("member-service")));
-        Set<String> openApiRoutes = Set.of("auth-openapi", "member-openapi", "provider-openapi",
-                "claims-openapi", "care-openapi", "document-openapi", "policy-openapi",
-                "settlement-openapi", "payment-openapi", "notification-openapi");
-        assertTrue(routes.stream().map(RouteDefinition::getId).collect(java.util.stream.Collectors.toSet())
-                .containsAll(openApiRoutes));
-        for (String routeId : openApiRoutes) {
-            RouteDefinition route = routes.stream().filter(candidate -> candidate.getId().equals(routeId))
-                    .findFirst().orElseThrow();
-            assertTrue(route.getFilters().stream().anyMatch(filter -> filter.getName().equals("SetPath")
-                    && "/v3/api-docs".equals(filter.getArgs().get("_genkey_0"))), routeId);
-        }
+        assertTrue(routes.stream().noneMatch(route -> route.getId().endsWith("-openapi")),
+                "OpenAPI docs are served from the availability-aware cache");
         assertEquals("http://test-eureka:8761/eureka/",
                 environment.getProperty("eureka.client.service-url.defaultZone"));
     }
@@ -164,7 +155,7 @@ class ApiGatewayApplicationTests {
     }
 
     @Test
-    void swaggerConfigurationOmitsUnavailableServiceSpecifications() throws Exception {
+    void swaggerConfigurationIncludesClaimsAlongsideAuthWhenBothAreAvailable() throws Exception {
         HttpServer healthyService = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         healthyService.createContext("/v3/api-docs", exchange -> {
             byte[] spec = "{\"openapi\":\"3.0.1\",\"paths\":{}}".getBytes(StandardCharsets.UTF_8);
@@ -178,6 +169,9 @@ class ApiGatewayApplicationTests {
         when(discoveryClient.getInstances("auth-service")).thenReturn(List.of(
                 new DefaultServiceInstance("auth-test", "auth-service", "127.0.0.1",
                         healthyService.getAddress().getPort(), false)));
+        when(discoveryClient.getInstances("claims-service")).thenReturn(List.of(
+                new DefaultServiceInstance("claims-test", "claims-service", "127.0.0.1",
+                        healthyService.getAddress().getPort(), false)));
         when(discoveryClient.getInstances("member-service")).thenReturn(List.of(
                 new DefaultServiceInstance("member-test", "member-service", "127.0.0.1", 1, false)));
         try {
@@ -186,9 +180,19 @@ class ApiGatewayApplicationTests {
                 .expectStatus().isOk()
                 .expectBody()
                 .jsonPath("$.urls").isArray()
-                .jsonPath("$.urls.length()").isEqualTo(1)
+                .jsonPath("$.urls.length()").isEqualTo(2)
                 .jsonPath("$.urls[0].url").isEqualTo("/openapi/auth")
+                .jsonPath("$.urls[1].name").isEqualTo("Claims Service")
+                .jsonPath("$.urls[1].url").isEqualTo("/openapi/claims")
+                .jsonPath("$['urls.primaryName']").isEqualTo("Authentication Service")
                 .jsonPath("$.configUrl").isEqualTo("/swagger-config");
+
+        webTestClient.get().uri("/openapi/auth").exchange()
+                .expectStatus().isOk()
+                .expectBody().jsonPath("$.servers[0].url").isEqualTo("/");
+        webTestClient.get().uri("/openapi/claims").exchange()
+                .expectStatus().isOk()
+                .expectBody().jsonPath("$.servers[0].url").isEqualTo("/");
         } finally {
             healthyService.stop(0);
         }
