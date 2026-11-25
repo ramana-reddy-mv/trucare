@@ -45,6 +45,11 @@ public class Claim {
     @Column(nullable = false)
     private ClaimStatus claimStatus;  // CLAIMED, APPROVED, REJECTED
 
+    @Version
+    private Long version;
+
+    private String rejectionReason;
+
     private LocalDateTime createdAt;  // Claim creation date
 
     private LocalDateTime updatedAt;  // Last updated timestamp

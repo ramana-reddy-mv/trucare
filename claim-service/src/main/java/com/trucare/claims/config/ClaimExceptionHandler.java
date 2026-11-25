@@ -16,6 +16,8 @@ import org.springframework.security.core.AuthenticationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import jakarta.persistence.OptimisticLockException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -69,6 +71,13 @@ public class ClaimExceptionHandler {
             InvalidClaimTransitionException exception, HttpServletRequest request) {
         return response(HttpStatus.CONFLICT, "INVALID_STATE_TRANSITION",
                 exception.getMessage(), request, List.of());
+    }
+
+    @ExceptionHandler({OptimisticLockingFailureException.class, OptimisticLockException.class})
+    public ResponseEntity<ClaimErrorResponse> handleConcurrentClaimUpdate(
+            RuntimeException exception, HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT, "CONCURRENT_CLAIM_UPDATE",
+                "Claim changed while this request was being processed; reload and retry", request, List.of());
     }
 
     @ExceptionHandler(ResponseStatusException.class)

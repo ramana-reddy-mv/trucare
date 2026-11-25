@@ -20,6 +20,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 import org.mockito.ArgumentCaptor;
 import com.trucare.claims.dto.CreateClaimRequest;
+import com.trucare.claims.dto.ChangeClaimStatusRequest;
+import com.trucare.claims.exception.InvalidClaimTransitionException;
+import com.trucare.claims.exception.ClaimNotFoundException;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -30,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.hamcrest.Matchers.hasItem;
@@ -174,5 +178,53 @@ class ClaimAdminAuthorizationTest {
                 .requestAttr(RequestDispatcher.ERROR_STATUS_CODE, 500)
                 .requestAttr(RequestDispatcher.ERROR_REQUEST_URI, "/api/claims"))
                 .andExpect(status().isInternalServerError());
+    }
+
+    @Test
+    void claimOfficerCanUseStatusUpdateApiAndReceivesLifecycleResponse() throws Exception {
+        when(claimService.transitionClaimStatus(eq("CLM-1"), any()))
+                .thenReturn(new ClaimDTO());
+
+        mockMvc.perform(put("/api/claims/CLM-1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + TestJwtKeys.token("CLAIM_OFFICER"))
+                        .content("{\"nextStatus\":\"UNDER_REVIEW\"}"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<ChangeClaimStatusRequest> request =
+                ArgumentCaptor.forClass(ChangeClaimStatusRequest.class);
+        verify(claimService).transitionClaimStatus(eq("CLM-1"), request.capture());
+        assertEquals(com.trucare.claims.model.ClaimStatus.UNDER_REVIEW, request.getValue().nextStatus());
+    }
+
+    @Test
+    void lifecycleConflictIsReturnedAs409AndMemberCannotUseStatusApi() throws Exception {
+        when(claimService.transitionClaimStatus(eq("CLM-1"), any()))
+                .thenThrow(new InvalidClaimTransitionException(
+                        "Claim status transition from PENDING_DOCUMENTS to APPROVED is not permitted"));
+        mockMvc.perform(put("/api/claims/CLM-1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + TestJwtKeys.token("CLAIM_OFFICER"))
+                        .content("{\"nextStatus\":\"APPROVED\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_STATE_TRANSITION"));
+
+        mockMvc.perform(put("/api/claims/CLM-1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + TestJwtKeys.token("MEMBER"))
+                        .content("{\"nextStatus\":\"UNDER_REVIEW\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void missingClaimOnStatusApiReturns404() throws Exception {
+        when(claimService.transitionClaimStatus(eq("missing"), any()))
+                .thenThrow(new ClaimNotFoundException("claim not found with id missing"));
+        mockMvc.perform(put("/api/claims/missing/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + TestJwtKeys.token("CLAIM_OFFICER"))
+                        .content("{\"nextStatus\":\"UNDER_REVIEW\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 }

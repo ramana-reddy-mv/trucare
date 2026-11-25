@@ -4,6 +4,7 @@ package com.trucare.claims.controller;
 import com.trucare.claims.model.Claim;
 import com.trucare.shared.claim.ClaimDTO;
 import com.trucare.claims.dto.CreateClaimRequest;
+import com.trucare.claims.dto.ChangeClaimStatusRequest;
 import com.trucare.shared.claim.UpdateClaimDTO;
 import com.trucare.claims.service.ClaimCreationResult;
 import lombok.extern.slf4j.Slf4j;
@@ -102,5 +103,12 @@ public class ClaimController {
     public ResponseEntity<ClaimDTO> updateClaim(@PathVariable String claimId, @RequestBody UpdateClaimDTO updateClaimDTO) {
         ClaimDTO createdClaim = claimService.updateClaim(claimId, updateClaimDTO);
         return new ResponseEntity<>(createdClaim,HttpStatus.OK);
+    }
+
+    @PutMapping("/{claimId}/status")
+    public ResponseEntity<ClaimDTO> transitionClaimStatus(
+            @PathVariable String claimId,
+            @Valid @RequestBody ChangeClaimStatusRequest request) {
+        return ResponseEntity.ok(claimService.transitionClaimStatus(claimId, request));
     }
 }

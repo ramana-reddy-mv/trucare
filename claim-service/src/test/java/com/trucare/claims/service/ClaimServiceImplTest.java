@@ -7,6 +7,7 @@ import com.trucare.claims.model.Claim;
 import com.trucare.claims.repository.ClaimRepository;
 import com.trucare.shared.claim.ClaimDTO;
 import com.trucare.shared.claim.CreateClaimDTO;
+import com.trucare.claims.dto.ChangeClaimStatusRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
@@ -35,6 +36,9 @@ class ClaimServiceImplTest {
     private ClaimMapper claimMapper;
     private ClaimValidationService claimValidationService;
     private ClaimPolicyEligibilityService claimPolicyEligibilityService;
+    private ClaimLifecycleValidator claimLifecycleValidator;
+    private ClaimDocumentValidationService claimDocumentValidationService;
+    private ClaimLifecyclePersistenceService claimLifecyclePersistenceService;
     private ClaimServiceImpl claimService;
 
     @BeforeEach
@@ -44,9 +48,14 @@ class ClaimServiceImplTest {
         claimMapper = mock(ClaimMapper.class);
         claimValidationService = mock(ClaimValidationService.class);
         claimPolicyEligibilityService = mock(ClaimPolicyEligibilityService.class);
+        claimLifecycleValidator = new ClaimLifecycleValidator();
+        claimDocumentValidationService = mock(ClaimDocumentValidationService.class);
+        claimLifecyclePersistenceService = new ClaimLifecyclePersistenceService(
+                claimRepository, claimLifecycleValidator);
         claimService = new ClaimServiceImpl(
                 claimRepository, claimPersistenceService, claimMapper, claimValidationService,
-                claimPolicyEligibilityService, new ObjectMapper().findAndRegisterModules());
+                claimPolicyEligibilityService, new ObjectMapper().findAndRegisterModules(),
+                claimLifecycleValidator, claimDocumentValidationService, claimLifecyclePersistenceService);
     }
 
     @Test
@@ -187,6 +196,139 @@ class ClaimServiceImplTest {
     }
 
     @Test
+    void statusTransitionReadsPersistedStatusAndPersistsOnlyAfterValidation() {
+        Claim claim = claimWithStatus(ClaimStatus.SUBMITTED);
+        when(claimRepository.findByClaimId("CLM-1")).thenReturn(Optional.of(claim));
+        when(claimRepository.saveAndFlush(claim)).thenReturn(claim);
+        ClaimDTO response = new ClaimDTO();
+        when(claimMapper.toClaimDTO(claim)).thenReturn(response);
+
+        ClaimDTO updated = claimService.transitionClaimStatus(
+                "CLM-1", new ChangeClaimStatusRequest(ClaimStatus.UNDER_REVIEW, null));
+
+        assertEquals(response, updated);
+        assertEquals(ClaimStatus.UNDER_REVIEW, claim.getClaimStatus());
+        assertNotNull(claim.getUpdatedAt());
+        verify(claimRepository).saveAndFlush(claim);
+    }
+
+    @Test
+    void invalidTransitionDoesNotModifyOrPersistClaim() {
+        Claim claim = claimWithStatus(ClaimStatus.PENDING_DOCUMENTS);
+        when(claimRepository.findByClaimId("CLM-1")).thenReturn(Optional.of(claim));
+
+        assertThrows(com.trucare.claims.exception.InvalidClaimTransitionException.class,
+                () -> claimService.transitionClaimStatus(
+                        "CLM-1", new ChangeClaimStatusRequest(ClaimStatus.APPROVED, null)));
+
+        assertEquals(ClaimStatus.PENDING_DOCUMENTS, claim.getClaimStatus());
+        verify(claimRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void missingClaimThrowsNotFoundBeforeTransitionValidation() {
+        when(claimRepository.findByClaimId("missing")).thenReturn(Optional.empty());
+        assertThrows(com.trucare.claims.exception.ClaimNotFoundException.class,
+                () -> claimService.transitionClaimStatus(
+                        "missing", new ChangeClaimStatusRequest(ClaimStatus.UNDER_REVIEW, null)));
+        verify(claimRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void submissionRequiresExistingValidatedDocuments() {
+        Claim claim = claimWithStatus(ClaimStatus.PENDING_DOCUMENTS);
+        claim.setDocumentIds(List.of(12L));
+        when(claimRepository.findByClaimId("CLM-1")).thenReturn(Optional.of(claim));
+        doThrow(new com.trucare.claims.exception.InvalidClaimTransitionException("missing documents"))
+                .when(claimDocumentValidationService).requireUploadedDocuments(List.of(12L));
+
+        assertThrows(com.trucare.claims.exception.InvalidClaimTransitionException.class,
+                () -> claimService.transitionClaimStatus(
+                        "CLM-1", new ChangeClaimStatusRequest(ClaimStatus.SUBMITTED, null)));
+        verify(claimRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void validDocumentsAllowSubmissionTransition() {
+        Claim claim = claimWithStatus(ClaimStatus.PENDING_DOCUMENTS);
+        claim.setDocumentIds(List.of(12L));
+        when(claimRepository.findByClaimId("CLM-1")).thenReturn(Optional.of(claim));
+        when(claimRepository.saveAndFlush(claim)).thenReturn(claim);
+        doNothing().when(claimDocumentValidationService).requireUploadedDocuments(List.of(12L));
+
+        claimService.transitionClaimStatus("CLM-1",
+                new ChangeClaimStatusRequest(ClaimStatus.SUBMITTED, null));
+
+        assertEquals(ClaimStatus.SUBMITTED, claim.getClaimStatus());
+        verify(claimDocumentValidationService).requireUploadedDocuments(List.of(12L));
+        verify(claimRepository).saveAndFlush(claim);
+    }
+
+    @Test
+    void rejectionRequiresReasonAndRecordsIt() {
+        Claim claim = claimWithStatus(ClaimStatus.UNDER_REVIEW);
+        when(claimRepository.findByClaimId("CLM-1")).thenReturn(Optional.of(claim));
+        when(claimRepository.saveAndFlush(claim)).thenReturn(claim);
+
+        assertThrows(com.trucare.claims.exception.InvalidClaimTransitionException.class,
+                () -> claimService.transitionClaimStatus(
+                        "CLM-1", new ChangeClaimStatusRequest(ClaimStatus.REJECTED, " ")));
+        verify(claimRepository, never()).saveAndFlush(any());
+
+        claimService.transitionClaimStatus(
+                "CLM-1", new ChangeClaimStatusRequest(ClaimStatus.REJECTED, "Not covered"));
+        assertEquals("Not covered", claim.getRejectionReason());
+        assertEquals(ClaimStatus.REJECTED, claim.getClaimStatus());
+    }
+
+    @Test
+    void manualSettlementStatusRequestsAreRejectedUntilWorkflowConfirmsThem() {
+        Claim approved = claimWithStatus(ClaimStatus.APPROVED);
+        when(claimRepository.findByClaimId("CLM-1")).thenReturn(Optional.of(approved));
+        assertThrows(com.trucare.claims.exception.InvalidClaimTransitionException.class,
+                () -> claimService.transitionClaimStatus("CLM-1",
+                        new ChangeClaimStatusRequest(ClaimStatus.SETTLEMENT_PENDING, null)));
+        verify(claimRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void optimisticLockFailureBecomesTransitionConflict() {
+        Claim claim = claimWithStatus(ClaimStatus.SUBMITTED);
+        when(claimRepository.findByClaimId("CLM-1")).thenReturn(Optional.of(claim));
+        when(claimRepository.saveAndFlush(claim)).thenThrow(
+                new org.springframework.orm.ObjectOptimisticLockingFailureException(Claim.class, "CLM-1"));
+
+        assertThrows(com.trucare.claims.exception.InvalidClaimTransitionException.class,
+                () -> claimService.transitionClaimStatus("CLM-1",
+                        new ChangeClaimStatusRequest(ClaimStatus.UNDER_REVIEW, null)));
+    }
+
+    @Test
+    void concurrentStatusChangeBetweenReadAndWriteReturnsConflict() {
+        Claim observed = claimWithStatus(ClaimStatus.SUBMITTED);
+        Claim concurrentlyUpdated = claimWithStatus(ClaimStatus.UNDER_REVIEW);
+        concurrentlyUpdated.setVersion(1L);
+        when(claimRepository.findByClaimId("CLM-1"))
+                .thenReturn(Optional.of(observed), Optional.of(concurrentlyUpdated));
+
+        assertThrows(com.trucare.claims.exception.InvalidClaimTransitionException.class,
+                () -> claimService.transitionClaimStatus("CLM-1",
+                        new ChangeClaimStatusRequest(ClaimStatus.UNDER_REVIEW, null)));
+        verify(claimRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void genericClaimUpdateCannotSetStatus() {
+        Claim claim = claimWithStatus(ClaimStatus.PENDING_DOCUMENTS);
+        when(claimRepository.findByClaimId("CLM-1")).thenReturn(Optional.of(claim));
+        com.trucare.shared.claim.UpdateClaimDTO update = new com.trucare.shared.claim.UpdateClaimDTO();
+        update.setClaimStatuses("APPROVED");
+        assertThrows(ResponseStatusException.class, () -> claimService.updateClaim("CLM-1", update));
+        assertEquals(ClaimStatus.PENDING_DOCUMENTS, claim.getClaimStatus());
+        verify(claimRepository, never()).save(any());
+    }
+
+    @Test
     void ineligiblePolicyDoesNotPersistClaim() {
         CreateClaimDTO request = validRequest();
         when(claimRepository.findByIdempotencyKey("request-ineligible")).thenReturn(Optional.empty());
@@ -252,6 +394,14 @@ class ClaimServiceImplTest {
         request.setTreatmentDate(LocalDate.of(2026, 1, 1));
         request.setClaimAmount(new BigDecimal("100.00"));
         return request;
+    }
+
+    private Claim claimWithStatus(ClaimStatus status) {
+        Claim claim = new Claim();
+        claim.setClaimId("CLM-1");
+        claim.setClaimStatus(status);
+        claim.setVersion(0L);
+        return claim;
     }
 
     private PolicyEligibilityResponse eligibleResponse() {

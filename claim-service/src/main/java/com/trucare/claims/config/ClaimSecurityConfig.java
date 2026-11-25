@@ -40,6 +40,8 @@ public class ClaimSecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/claims/**").hasAnyRole("CLAIM_OFFICER", "ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/claims/updateClaim/**")
                         .hasAnyRole("CLAIM_OFFICER", "ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/claims/*/status")
+                        .hasAnyRole("CLAIM_OFFICER", "ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/claims/**").hasRole("ADMIN")
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(oauth -> oauth.jwt(jwt ->

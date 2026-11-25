@@ -7,6 +7,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 import com.trucare.claims.client.PolicyClient;
 import com.trucare.shared.client.MemberClient;
 import com.trucare.shared.client.ProviderClient;
+import com.trucare.shared.client.DocumentClient;
 import com.trucare.shared.openapi.TruCareOpenApiConfiguration;
 import org.springframework.context.annotation.Import;
 
@@ -14,7 +15,7 @@ import org.springframework.context.annotation.Import;
 @SpringBootApplication
 @EnableDiscoveryClient
 @Import(TruCareOpenApiConfiguration.class)
-@EnableFeignClients(clients = {MemberClient.class, ProviderClient.class, PolicyClient.class})
+@EnableFeignClients(clients = {MemberClient.class, ProviderClient.class, PolicyClient.class, DocumentClient.class})
 public class ClaimsServiceApplication {
 
 	public static void main(String[] args) {

@@ -5,6 +5,7 @@ import com.trucare.claims.model.Claim;
 import com.trucare.shared.claim.ClaimDTO;
 import com.trucare.shared.claim.CreateClaimDTO;
 import com.trucare.shared.claim.UpdateClaimDTO;
+import com.trucare.claims.dto.ChangeClaimStatusRequest;
 
 import java.util.List;
 import org.springframework.data.domain.Pageable;
@@ -19,6 +20,7 @@ public interface ClaimService {
      ClaimDTO getClaimByBusinessId(String claimId);
      List<ClaimDTO> getAllClaims();
      ClaimDTO updateClaim(String claimId, UpdateClaimDTO updateClaimDTO);
+     ClaimDTO transitionClaimStatus(String claimId, ChangeClaimStatusRequest request);
      String deleteClaim(Long claimId);
      ClaimPageDTO<ClaimDTO> searchClaims(String status, String memberId, String providerId,
                                          LocalDate from, LocalDate to, String claimId, Pageable pageable);

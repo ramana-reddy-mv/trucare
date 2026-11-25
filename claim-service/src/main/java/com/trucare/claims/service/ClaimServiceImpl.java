@@ -9,6 +9,7 @@ import com.trucare.claims.exception.ProviderNotFoundException;
 import com.trucare.claims.mapper.ClaimMapper;
 import com.trucare.claims.model.Claim;
 import com.trucare.claims.model.ClaimStatus;
+import com.trucare.claims.dto.ChangeClaimStatusRequest;
 import com.trucare.claims.repository.ClaimRepository;
 import com.trucare.shared.claim.ClaimDTO;
 import com.trucare.shared.claim.CreateClaimDTO;
@@ -47,19 +48,28 @@ public class ClaimServiceImpl implements ClaimService {
     private final ClaimValidationService claimValidationService;
     private final ClaimPolicyEligibilityService claimPolicyEligibilityService;
     private final ObjectMapper objectMapper;
+    private final ClaimLifecycleValidator claimLifecycleValidator;
+    private final ClaimDocumentValidationService claimDocumentValidationService;
+    private final ClaimLifecyclePersistenceService claimLifecyclePersistenceService;
 
     @Autowired
     public ClaimServiceImpl(ClaimRepository claimRepository, ClaimPersistenceService claimPersistenceService,
                             ClaimMapper claimMapper,
                             ClaimValidationService claimValidationService,
                             ClaimPolicyEligibilityService claimPolicyEligibilityService,
-                            ObjectMapper objectMapper) {
+                            ObjectMapper objectMapper,
+                            ClaimLifecycleValidator claimLifecycleValidator,
+                            ClaimDocumentValidationService claimDocumentValidationService,
+                            ClaimLifecyclePersistenceService claimLifecyclePersistenceService) {
         this.claimRepository = claimRepository;
         this.claimPersistenceService = claimPersistenceService;
         this.claimMapper = claimMapper;
         this.claimValidationService = claimValidationService;
         this.claimPolicyEligibilityService = claimPolicyEligibilityService;
         this.objectMapper = objectMapper;
+        this.claimLifecycleValidator = claimLifecycleValidator;
+        this.claimDocumentValidationService = claimDocumentValidationService;
+        this.claimLifecyclePersistenceService = claimLifecyclePersistenceService;
     }
 
     // Create or update claim reactively
@@ -208,16 +218,18 @@ public class ClaimServiceImpl implements ClaimService {
     @Override
     public ClaimDTO updateClaim(String claimId, UpdateClaimDTO updateClaimDTO) {
         Claim claim = claimRepository.findByClaimId(claimId)
-                .orElseThrow(() -> new ClaimNotFoundException("claim not found with id"+ updateClaimDTO.getClaimId()));
+                .orElseThrow(() -> new ClaimNotFoundException("claim not found with id " + claimId));
+
+        if (updateClaimDTO.getClaimStatuses() != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Claim status must be changed through PUT /api/claims/{claimId}/status");
+        }
 
         if(updateClaimDTO.getClaimAmount()!=null){
             claim.setClaimAmount(updateClaimDTO.getClaimAmount());
         }
         if(updateClaimDTO.getClaimId()!=null){
             claim.setClaimId(String.valueOf(updateClaimDTO.getClaimId()));
-        }
-        if(updateClaimDTO.getClaimStatuses()!=null){
-            claim.setClaimStatus(ClaimStatus.valueOf(updateClaimDTO.getClaimStatuses()));
         }
         if(updateClaimDTO.getDocuments()!=null){
             claim.setDocumentIds(updateClaimDTO.getDocuments().stream().map(DocumentDTO::getId).toList());
@@ -228,12 +240,27 @@ public class ClaimServiceImpl implements ClaimService {
         if(updateClaimDTO.getProviderId()!=null){
             claim.setProviderId(String.valueOf(updateClaimDTO.getProviderId()));
         }
-        if(updateClaimDTO.getUpdatedAt()!=null) {
-            claim.setUpdatedAt(updateClaimDTO.getUpdatedAt());
-        }
+        claim.setUpdatedAt(LocalDateTime.now());
 
         claimRepository.save(claim);
         return claimMapper.toClaimDTO(claim);
+    }
+
+    @Override
+    public ClaimDTO transitionClaimStatus(String claimId, ChangeClaimStatusRequest request) {
+        Claim claim = claimRepository.findByClaimId(claimId)
+                .orElseThrow(() -> new ClaimNotFoundException("claim not found with id " + claimId));
+        ClaimStatus currentStatus = claim.getClaimStatus();
+        ClaimStatus requestedStatus = request.nextStatus();
+        claimLifecycleValidator.validate(currentStatus, requestedStatus);
+        boolean documentsValidated = false;
+        if (currentStatus == ClaimStatus.PENDING_DOCUMENTS && requestedStatus == ClaimStatus.SUBMITTED) {
+            claimDocumentValidationService.requireUploadedDocuments(claim.getDocumentIds());
+            documentsValidated = true;
+        }
+        Claim updated = claimLifecyclePersistenceService.transition(
+                claimId, claim.getVersion(), request, documentsValidated);
+        return claimMapper.toClaimDTO(updated);
     }
 
     @Override
